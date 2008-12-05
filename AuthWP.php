@@ -1,23 +1,10 @@
 <?php
-// AuthWP.php - part of MPMW
+// AuthWP.php
 // MediaWiki extension to delegate authentication and user management
 // to a local Wordpress installation.
 // Version 0.1
 // Copyright (C) 2008 Ciaran Gultnieks <ciaran@ciarang.com>
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 
 
 // Relative path to Wordpress installation. In the default '..' we
@@ -54,7 +41,7 @@ function AuthWPUserLoadFromSession($user, &$result) {
 
 	// Is there a Wordpress user with a valid session?
 	$wpuser=wp_get_current_user();
-	if(!$wpuser || $wpuser->user_login=='')
+	if(!$wpuser->ID)
 		return true;
 
 	$u=User::newFromName($wpuser->user_login);
@@ -75,6 +62,7 @@ function AuthWPUserLoadFromSession($user, &$result) {
 	}
 	$user->setID($id);
 	$user->loadFromId();
+	wfSetupSession();	
 	$user->setCookies();
 	$user->saveSettings();
 	$result=true;
