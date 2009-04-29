@@ -22,6 +22,7 @@ require_once('AuthPlugin.php');
 // able to handle everything as if Wordpress was doing it natively
 // including respecting any plugins that might be in place.
 require($WP_relpath.'/wp-load.php');
+require($WP_relpath.'/wp-includes/registration.php');
 
 // Wordpress has escaped all these in wp-settings.php - we need to
 // unescape them again if they weren't meant to be escaped.
@@ -158,7 +159,6 @@ class AuthWP extends AuthPlugin {
 	// MediaWiki API HANDLER
 	// Add a user created in MediaWiki to the Wordpress database...
 	function addUser($user,$password) {
-		require_once($WP_relpath.'/wp-includes/registration.php');
 		wp_create_user($user->mName,$password,$user->mEmail);
 		return true;
 	}
