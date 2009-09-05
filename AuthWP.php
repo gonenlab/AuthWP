@@ -115,7 +115,9 @@ class AuthWP extends AuthPlugin {
 	// are good, or false if they're bad.
 	function authenticate($username,$password) {
 		$credentials=array( 'user_login'=>$username,'user_password'=>$password);
-		return wp_signon($credentials,false);
+		if(wp_signon($credentials,false)==WP_User)
+			return true;
+		return false;
 	}
 
 	// MediaWiki API HANDLER
