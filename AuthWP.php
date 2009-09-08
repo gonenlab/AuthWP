@@ -114,10 +114,10 @@ class AuthWP extends AuthPlugin {
 	// Handle authentication, returning true if the given credentials
 	// are good, or false if they're bad.
 	function authenticate($username,$password) {
-		$credentials=array( 'user_login'=>$username,'user_password'=>$password);
-		if(wp_signon($credentials,false)==WP_User)
-			return true;
-		return false;
+		$credentials=array('user_login'=>$username,'user_password'=>$password);
+		if(is_wp_error(wp_signon($credentials,false)))
+			return false;
+		return true;
 	}
 
 	// MediaWiki API HANDLER
