@@ -34,8 +34,10 @@ require_once('AuthPlugin.php');
 // names of things are bound to clash somewhere, but we want to be
 // able to handle everything as if Wordpress was doing it natively
 // including respecting any plugins that might be in place.
-require($WP_relpath.'/wp-load.php');
-require($WP_relpath.'/wp-includes/registration.php');
+if(php_sapi_name() != 'cli') {
+	$require($WP_relpath.'/wp-load.php');
+	$require($WP_relpath.'/wp-includes/registration.php');
+}
 
 // Wordpress has escaped all these in wp-settings.php - we need to
 // unescape them again if they weren't meant to be escaped.
