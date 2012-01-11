@@ -2,8 +2,9 @@
 // AuthWP.php
 // MediaWiki extension to delegate authentication and user management
 // to a local Wordpress installation.
-// Version 0.2
-// Copyright (C) 2008-9 Ciaran Gultnieks <ciaran@ciarang.com>
+// See http://ciarang.com/wiki/page/WPMW for more information.
+// Version 0.3
+// Copyright (C) 2008-12 Ciaran Gultnieks <ciaran@ciarang.com>
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,6 +19,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+
 
 
 // Relative path to Wordpress installation. In the default '..' we
@@ -35,8 +37,8 @@ require_once('AuthPlugin.php');
 // able to handle everything as if Wordpress was doing it natively
 // including respecting any plugins that might be in place.
 if(php_sapi_name() != 'cli') {
-	$require($WP_relpath.'/wp-load.php');
-	$require($WP_relpath.'/wp-includes/registration.php');
+	require($WP_relpath.'/wp-load.php');
+	require($WP_relpath.'/wp-includes/registration.php');
 }
 
 // Wordpress has escaped all these in wp-settings.php - we need to
@@ -80,6 +82,11 @@ function AuthWPUserLoadFromSession($user, &$result) {
 	$user->loadFromId();
 	wfSetupSession();	
 	$user->setCookies();
+
+	// Set these to ensure synchronisation with WordPress...
+	$user->setEmail($wpuser->user_email);
+	$user->setRealName($wpuser->user_nicename);
+
 	$user->saveSettings();
 	$result=true;
 
@@ -138,6 +145,18 @@ class AuthWP extends AuthPlugin {
 	}
 
 	// MediaWiki API HANDLER
+	function allowEmailChange() {
+		// No - change it via the WordPress interface only.
+		return false;
+	}
+
+	// MediaWiki API HANDLER
+	function allowRealNameChange() {
+		// No - change it via the WordPress interface only.
+		return false;
+	}
+
+	// MediaWiki API HANDLER
 	// Always return true - users can change their passwords from
 	// MediaWiki - we'll hash them and update the Wordpress DB.
 	function allowPasswordChange() {
@@ -163,6 +182,7 @@ class AuthWP extends AuthPlugin {
 			return false;
 		$user->setEmail($wpuser->user_email);
 		$user->setRealName($wpuser->user_nicename);
+		$user->saveSettings();
 		return true;
 	}
 
