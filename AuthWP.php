@@ -29,7 +29,7 @@ $WP_relpath='..';
 
 
 // We'll derive our class from MediaWiki's AuthPlugin class...
-require_once('AuthPlugin.php');
+require_once('includes/AuthPlugin.php');
 
 
 // Bootstrap Wordpress. This seems rather foolish since surely the
