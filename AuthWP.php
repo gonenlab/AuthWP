@@ -43,7 +43,7 @@ if(php_sapi_name() != 'cli') {
 
 // Wordpress has escaped all these in wp-settings.php - we need to
 // unescape them again if they weren't meant to be escaped.
-if(!get_magic_quotes_gpc()) {
+if(php_sapi_name() != 'cli' && !get_magic_quotes_gpc()) {
 	$_GET    = stripslashes_deep($_GET   );
 	$_POST   = stripslashes_deep($_POST  );
 	$_COOKIE = stripslashes_deep($_COOKIE);
