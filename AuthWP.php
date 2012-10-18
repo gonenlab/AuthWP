@@ -25,7 +25,7 @@
 // Relative path to Wordpress installation. In the default '..' we
 // have MediaWiki installed in a 'wiki' directory off the main
 // Wordpress root.
-$WP_relpath='..';
+$WP_relpath=isset($wgAuthWPRelPath)?$wgAuthWPRelPath:'..';
 
 
 // We'll derive our class from MediaWiki's AuthPlugin class...
