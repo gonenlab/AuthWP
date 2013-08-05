@@ -3,8 +3,8 @@
 // MediaWiki extension to delegate authentication and user management
 // to a local Wordpress installation.
 // See http://ciarang.com/wiki/page/WPMW for more information.
-// Version 0.3
-// Copyright (C) 2008-12 Ciaran Gultnieks <ciaran@ciarang.com>
+// Version 0.3.1
+// Copyright (C) 2008-13 Ciaran Gultnieks <ciaran@ciarang.com>
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -54,7 +54,7 @@ if(php_sapi_name() != 'cli' && !get_magic_quotes_gpc()) {
 $wgExtensionCredits['other'][] = array(
 	'path' => __FILE__,
 	'name' => 'WPMW',
-	'version' => 0.3,
+	'version' => '0.3.1',
 	'author' => 'Ciaran Gultnieks',
 	'url' => 'https://www.mediawiki.org/wiki/Extension:WPMW',
         'descriptionmsg' => 'Provides WordPress login integration',
