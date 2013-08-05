@@ -20,7 +20,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-
+if(!defined('MEDIAWIKI')) {
+    die('Not an entry point.');
+}
 
 // Relative path to Wordpress installation. In the default '..' we
 // have MediaWiki installed in a 'wiki' directory off the main
@@ -49,7 +51,14 @@ if(php_sapi_name() != 'cli' && !get_magic_quotes_gpc()) {
 	$_COOKIE = stripslashes_deep($_COOKIE);
 }
 
-
+$wgExtensionCredits['other'][] = array(
+	'path' => __FILE__,
+	'name' => 'WPMW',
+	'version' => 0.3,
+	'author' => 'Ciaran Gultnieks',
+	'url' => 'https://www.mediawiki.org/wiki/Extension:WPMW',
+        'descriptionmsg' => 'Provides WordPress login integration',
+);
 
 // Handler for the MediaWiki UserLoadFromSession hook. Allows users
 // already signed in to Wordpress to be automatically signed in to
