@@ -66,6 +66,12 @@ $wgExtensionCredits['other'][] = array(
 // has been done.
 function AuthWPUserLoadFromSession($user, &$result) {
 
+        // Abort in cli mode. Seems like it shouldn't be necessary
+        // but some cli scripts to end up here for whatever bizarre
+        // reason - runjobs is an example.
+        if(php_sapi_name() == 'cli')
+            return true;
+
 	// Is there a Wordpress user with a valid session?
 	$wpuser=wp_get_current_user();
 	if(!$wpuser->ID)
