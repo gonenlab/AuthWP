@@ -31,7 +31,7 @@ $WP_relpath=isset($wgAuthWPRelPath)?$wgAuthWPRelPath:'..';
 
 
 // We'll derive our class from MediaWiki's AuthPlugin class...
-require_once('includes/AuthPlugin.php');
+require_once("$IP/includes/AuthPlugin.php");
 
 
 // Bootstrap Wordpress. This seems rather foolish since surely the
