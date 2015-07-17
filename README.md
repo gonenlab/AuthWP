@@ -1,0 +1,1 @@
+See [the MediaWiki Extension page](https://www.mediawiki.org/wiki/Extension:WPMW) for documentation.
