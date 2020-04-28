@@ -51,18 +51,8 @@ class WPMWSessionProvider extends CookieSessionProvider {
     }
 
 
-    public function parent_provideInfo( WebRequest $request ) {
-        $sessionId = $this->getCookie(
-            $request, $this->params['sessionName'], '' );
-        $info = [
-            'provider' => $this,
-            'forceHTTPS' => $this->getCookie(
-                $request, 'forceHTTPS', '', false )
-        ];
-        if ( SessionManager::validateSessionId( $sessionId ) ) {
-            $info['id'] = $sessionId;
-            $info['persisted'] = true;
-        }
+    public function parent_provideInfo(
+        WebRequest $request, $sessionId = null ) {
 
         list( $userId, $userName, $token ) = $this->getUserInfoFromCookies(
             $request );
@@ -101,16 +91,21 @@ class WPMWSessionProvider extends CookieSessionProvider {
                         ] );
                     return null;
                 }
-                $info['userInfo'] = $userInfo->verified();
-                $info['persisted'] = true; // If we have user+token, it should be
-            } elseif ( isset( $info['id'] ) ) {
-                $info['userInfo'] = $userInfo;
+                $ret = $userInfo->verified();
+#                $info['persisted'] = true; // If we have user+token,
+#                                           // it should be XXX
+#                                           // Commented, set outside
+#                                           // this function, always
+#                                           // true when this guy
+#                                           // returns non-null
+            } elseif ( isset( $sessionId ) ) {
+                $ret = $userInfo;
             } else {
                 // No point in returning, loadSessionInfoFromStore() will
                 // reject it anyway.
                 return null;
             }
-        } elseif ( isset( $info['id'] ) ) {
+        } elseif ( isset( $sessionId ) ) {
             // No UserID cookie, so insist that the session is anonymous.
             // Note: this event occurs for several normal activities:
             // * anon visits Special:UserLogin
@@ -119,16 +114,16 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $this->logger->debug(
                 'Session "{session}" requested without UserID cookie',
                 [
-                    'session' => $info['id'],
+                    'session' => $sessionId,
                 ] );
-            $info['userInfo'] = UserInfo::newAnonymous();
+            $ret = UserInfo::newAnonymous();
         } else {
             // No session ID and no user is the same as an empty session, so
             // there's no point.
             return null;
         }
 
-        return $info;
+        return $ret;
     }
 
 
@@ -138,14 +133,27 @@ class WPMWSessionProvider extends CookieSessionProvider {
 
 
         // Returns null when nobody logged in.
-        $info = $this->parent_provideInfo( $request );
 
-        if ($info) {
+        $sessionId = $this->getCookie(
+            $request, $this->params['sessionName'], '' );
+        $info = [
+             'provider' => $this,
+             'forceHTTPS' => $this->getCookie(
+                 $request, 'forceHTTPS', '', false )
+         ];
+        if ( SessionManager::validateSessionId( $sessionId ) ) {
+             $info['id'] = $sessionId;
+             $info['persisted'] = true;
+        }
+
+        $info['userInfo'] = $this->parent_provideInfo(
+            $request, isset( $info['id'] ) ? $info['id'] : null );
+
+        if ($info['userInfo']) {
             $sessionInfo = new SessionInfo( $this->priority, $info );
         } else {
             $sessionInfo = null;
         }
-
 
         if ( $sessionInfo === null ) {
             $this->logger->info( "MARKER: sessionInfo is null" );
@@ -231,7 +239,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
         // is still around.
         $user = wp_get_current_user();
         if ( !$user->exists() ) {
-            $this->logger->info("MARKER: Session OK, but WP user logged out" );
+            $this->logger->info( "MARKER: Session OK, but WP user logged out" );
             $this->unpersistSession( $request ); // Does not work
         }
 
@@ -256,10 +264,10 @@ class WPMWSessionProvider extends CookieSessionProvider {
 #            $foo = $request->getSessionId();
 #            $foo = $request->getFullRequestURL();
 #            $this->logger->info(
-#                "MARKER: Got Session ID " . gettype($foo) . " value " . $foo);
+#                "MARKER: Got Session ID " . gettype($foo) . " value " . $foo );
 
 #            $this->logger->idnfo(
-#                "MARKER: my cookie name " . $this->sessionCookieName);
+#                "MARKER: my cookie name " . $this->sessionCookieName );
 
             return null; // XXX
         }
@@ -294,7 +302,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
         // XXX Ideally: specify the groups in WordPress, and override
         // theme here!  See
         // https://www.mediawiki.org/wiki/Manual:User_rights
-
 #        $user = $userInfo->getUser();
 #        foreach ( $user->getGroups() as $t ) {
 #            $this->logger->info(
