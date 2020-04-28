@@ -91,7 +91,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
                         ] );
                     return null;
                 }
-                $ret = $userInfo->verified();
+                return $userInfo->verified();
 #                $info['persisted'] = true; // If we have user+token,
 #                                           // it should be XXX
 #                                           // Commented, set outside
@@ -99,11 +99,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
 #                                           // true when this guy
 #                                           // returns non-null
             } elseif ( isset( $sessionId ) ) {
-                $ret = $userInfo;
-            } else {
-                // No point in returning, loadSessionInfoFromStore() will
-                // reject it anyway.
-                return null;
+                return $userInfo;
             }
         } elseif ( isset( $sessionId ) ) {
             // No UserID cookie, so insist that the session is anonymous.
@@ -116,14 +112,16 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 [
                     'session' => $sessionId,
                 ] );
-            $ret = UserInfo::newAnonymous();
-        } else {
-            // No session ID and no user is the same as an empty session, so
-            // there's no point.
-            return null;
+            return UserInfo::newAnonymous();
         }
 
-        return $ret;
+        // Either: Have userId, but no token or no sessionID.  No
+        // point in returning, loadSessionInfoFromStore() will reject
+        // it anyway.
+
+        // Or: No session ID and no user is the same as an empty session, so
+        // there's no point.
+        return null;
     }
 
 
@@ -137,13 +135,13 @@ class WPMWSessionProvider extends CookieSessionProvider {
         $sessionId = $this->getCookie(
             $request, $this->params['sessionName'], '' );
         $info = [
-             'provider' => $this,
-             'forceHTTPS' => $this->getCookie(
-                 $request, 'forceHTTPS', '', false )
-         ];
+            'provider' => $this,
+            'forceHTTPS' => $this->getCookie(
+                $request, 'forceHTTPS', '', false )
+        ];
         if ( SessionManager::validateSessionId( $sessionId ) ) {
-             $info['id'] = $sessionId;
-             $info['persisted'] = true;
+            $info['id'] = $sessionId;
+            $info['persisted'] = true;
         }
 
         $info['userInfo'] = $this->parent_provideInfo(
@@ -199,40 +197,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
 #                    'forceUse' => $forceUse, // XXX was true, or rather $forceUse
                 ] );
             }
-
-        } else {
-            $this->logger->info(
-                "MARKER: forceHTTPS(): " .
-                $sessionInfo->forceHTTPS() );
-            $this->logger->info(
-                "MARKER: forceUse(): " .
-                $sessionInfo->forceUse() );
-            $this->logger->info(
-                "MARKER: getId(): " .
-                $sessionInfo->getId() );
-            $this->logger->info(
-                "MARKER: getPriority(): " .
-                $sessionInfo->getPriority() );
-            $this->logger->info(
-                "MARKER: getProvider(): " .
-                $sessionInfo->getProvider() );
-            $this->logger->info(
-                "MARKER: getProviderMetadata(): " .
-                $sessionInfo->getProviderMetadata() );
-            $this->logger->info(
-                "MARKER: getUserInfo(): " .
-                $sessionInfo->getUserInfo() );
-            $this->logger->info(
-                "MARKER: isIdSafe(): " .
-                $sessionInfo->isIdSafe() );
-            $this->logger->info(
-                "MARKER: wasPersisted(): " .
-                $sessionInfo->wasPersisted() );
-            $this->logger->info(
-                "MARKER: wasRemembered(): " .
-                $sessionInfo->wasRemembered() );
-
-            $this->logger->info( "MARKER: end of stuff" );
         }
 
         // OK, this works... except if user logs out of WP, then this
