@@ -1,0 +1,33 @@
+{
+    "name": "WPMW",
+    "version": "0.4.0",
+    "author": [
+        "Ciaran Gultnieks",
+        "Johan Hattne"],
+    "url": "https://www.mediawiki.org/wiki/Extension:WPMW",
+    "description": "Provides WordPress login integration",
+    "license-name": "AGPL-3.0-or-later",
+    "type": "other",
+    "requires": {
+        "MediaWiki": ">= 1.27.0"
+    },
+    "AuthManagerAutoConfig": {
+        "primaryauth": {
+            "WPMWAuthenticationProvider": {
+                "class": "WPMWAuthenticationProvider",
+                "args": []
+            }
+        }
+    },
+    "SessionProviders": {
+        "WPMWSessionProvider": {
+            "class": "WPMWSessionProvider",
+            "args": []
+        }
+    },
+    "AutoloadClasses": {
+        "WPMWAuthenticationProvider": "includes/WPMWAuthenticationProvider.php",
+        "WPMWSessionProvider": "includes/WPMWSessionProvider.php"
+    },
+    "manifest_version": 1
+}
