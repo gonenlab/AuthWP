@@ -23,6 +23,7 @@
  * From https://www.mediawiki.org/wiki/Manual:SessionManager_and_AuthManager/SessionProvider_examples
  */
 
+# XXX Clean this up!
 use MediaWiki\Session\SessionProvider;
 use MediaWiki\Session\CookieSessionProvider;
 #use MediaWiki\Session\ImmutableSessionProviderWithCookie;
@@ -35,30 +36,30 @@ use MediaWiki\Session\SessionManager;
 require_once("../wp-load.php"); // XXX Placement? require() or require_once()?
 
 
-// XXX What about inheriting from CookieSessionProvider instead, like
-// Auth_RemoteUser?  That restores the logout button, but it seems we
-// never get to the AuthProvider!  What should provideSessionInfo()
-// return in that case?  Something new and the AuthProvider has to
-// fill in the details?
 class WPMWSessionProvider extends CookieSessionProvider {
-#class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
-
+    // XXX Make priority configurable?
     public function __construct( $params = [] ) {
-
         $params += [ 'priority' => SessionInfo::MAX_PRIORITY ];
-
         parent::__construct( $params );
     }
 
 
-    // Returns null when nobody logged in.
+    // If no session exists for the request, return null.  Otherwise
+    // return a SessionInfo object identifying the session.
+    //
+    // From the documentation: "The SessionProvider must not attempt
+    // to auto-create users.  MediaWiki will do this later (when it's
+    // safe) if the chose session has a user with a valid name, but no
+    // ID.  Do the session here as well?  It is a bit of a wart...
+    //
+    // This closely follows
+    // https://doc.wikimedia.org/mediawiki-core/master/php/CookieSessionProvider_8php_source.html
     public function provideUserInfo( WebRequest $request, $sessionId = null ) {
         list( $userId, $userName, $token ) = $this->getUserInfoFromCookies(
             $request );
-#        list( $userId, $userName, $token ) = parent::getUserInfoFromCookies(
-#            $request );
 
-        // Cannot fail here, because user may be logged in to non-WP account.
+        // Cannot fail (return null) here, because user may be logged
+        // in to non-WP account.
         $wp_user = wp_get_current_user();
         if ( $wp_user->exists() ) {
             $wp_canonical_name =  User::getCanonicalName(
@@ -70,13 +71,16 @@ class WPMWSessionProvider extends CookieSessionProvider {
         }
 
         if ( $userId !== null ) {
+            // If there is a user cookie, the user must already be
+            // provisioned.
             try {
                 $userInfo = UserInfo::newFromId( $userId );
             } catch ( \InvalidArgumentException $ex ) {
                 return null;
             }
 
-            // Sanity check
+            // Sanity check: the user name and ID from the user cookie
+            // must match.
             if ( $userName !== null && $userInfo->getName() !== $userName ) {
                 $this->logger->warning(
                     'Session "{session}" requested with mismatched UserID and UserName cookies.',
@@ -91,6 +95,8 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 return null;
             }
 
+            // If there is a token, it must be valid.  If there is no
+            // token, there must be a valid session.
             if ( $token !== null ) {
                 if ( !hash_equals( $userInfo->getToken(), $token ) ) {
                     $this->logger->warning(
@@ -116,12 +122,20 @@ class WPMWSessionProvider extends CookieSessionProvider {
 
             // XXX Check must match WP user!  Fishy!  What about
             // non-WP users? Those that are not in WP as per
-            // AuthenticationProvider?
+            // AuthenticationProvider?  If this returns null, then the
+            // MediaWiki and WordPress sessions will be destroyed.
+            //
+            // XXX How do we know userInfo is valid with MediaWiki?
+            // isAnon() returns true or equivalently isRegistered()
+            // returns false.
             $this->logger->info( "MARKER are we there yet?" );
 
-            if (!isset($wp_canonical_name) || $wp_canonical_name != $userName) {
-                $this->logger->info( "MARKER are we there yet? NULL!" );
-                return null;
+            if ( username_exists($userName) ) {
+                if (!isset($wp_canonical_name) ||
+                    $wp_canonical_name != $userName) {
+                    $this->logger->info( "MARKER are we there yet? NULL!" );
+                    return null;
+                }
             }
 
             return $userInfo;
@@ -143,7 +157,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
         // Either: Have userId, but no token or no sessionID.  No
         // point in returning, loadSessionInfoFromStore() will reject
         // it anyway.
-
+        //
         // Or: No session ID and no user is the same as an empty
         // session, so there's no point.
 
@@ -156,7 +170,10 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 // XXX Expect to get here for authenticated users that
                 // have not been provisioned.  Either users are
                 // provisioned by AuthProvider, or they should be
-                // provisioned here?
+                // provisioned here?  Since $wp_canonical_name is a
+                // valid username, this should not throw an exception
+                // for valid user, and auto-creation should happen
+                // here.
                 return null;
             }
         }
@@ -198,113 +215,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $sessionId = $this->hashToSessionId( $userInfo->getName() );
         }
 
-        return new SessionInfo( $this->priority, [
-            'forceHTTPS' => $this->getCookie( $request, 'forceHTTPS', '', false ),
-            'id' => $sessionId,
-            'persisted' => true,
-            'provider' => $this,
-            'userInfo' => $userInfo
-        ] );
-
-
-        if ( $sessionInfo === null ) {
-            $this->logger->info( "MARKER: sessionInfo is null" );
-
-            $user = wp_get_current_user();
-            if ( $user->exists() ) {
-
-                $this->logger->info("MARKER: have WP user with authorization");
-
-                // userInfo is guaranteed to match the logged in WP
-                // user, no need to check whether
-                // $userInfo()->getName() matches $user->user_login.
-
-                $this->logger->info("MARKER: WP user is provisioned");
-
-                // This is NULL
-                $sessionId = $this->getCookie(
-                    $request, $this->params['sessionName'], '' );
-                $sessionId = $this->hashToSessionId( $user->user_login );
-                $this->logger->info(
-                    "MARKER: have sessionId type " . gettype($sessionId) .
-                    " with value " . $sessionId );
-                $this->logger->info(
-                    "MARKER sessionId valid?" .
-                    SessionManager::validateSessionid( $sessionId) );
-
-                // XXX Should sett forceHTTPS
-                return new SessionInfo( $this->priority, [
-                    'provider' => $this,
-                    'id' => $sessionId,
-                    'userInfo' => $userInfo, // XXX what about $userInfo->verified()
-                    'persisted' => true, // XXX was false, or rather $persisted,
-#                    'forceUse' => $forceUse, // XXX was true, or rather $forceUse
-                ] );
-            }
-        }
-
-        // OK, this works... except if user logs out of WP, then this
-        // is still around.
-        $user = wp_get_current_user();
-        if ( !$user->exists() ) {
-            $this->logger->info( "MARKER: Session OK, but WP user logged out" );
-            $this->unpersistSession( $request ); // Does not work
-        }
-
-        return $sessionInfo;
-
-        $user = wp_get_current_user();
-        if ( !$user->exists() ) {
-            // If we have a MediaWiki cookie/session here delete it!
-            // No longer logged in to WordPress!  Otherwise downstream
-            // SessionProviders will allow work to continue.  Log in
-            // on MediaWiki, log out in WordPress, return to MediaWiki
-            // and find that we're still logged in
-            $this->setLoggedOutCookie( time(), $request ); // Not for this class; nah, seems OK
-            $this->unpersistSession( $request ); // Does not work
-            $this->logger->info(
-                "MARKER: No current WordPress login, killing MediaWiki session" );
-
-#            $sess = $request->getSession();
-#            $id = $this->getSessionIdFromCookie( $request );
-
-#            $foo = $request->getSessionId();
-#            $foo = $request->getFullRequestURL();
-#            $this->logger->info(
-#                "MARKER: Got Session ID " . gettype($foo) . " value " . $foo );
-
-#            $this->logger->idnfo(
-#                "MARKER: my cookie name " . $this->sessionCookieName );
-
-            return null; // XXX
-        }
-
-        $this->logger->info( "MARKER: Attempting to get userInfo " );
-
-        $userInfo = UserInfo::newFromName( $user->user_login, true );
-        // XXX How do we know userInfo is valid with MediaWiki?
-        // isAnon() returns true or equivalently isRegistered()
-        // returns false.
-        $this->logger->info( "MARKER: Got userInfo " . $userInfo );
-
-        if ( $this->sessionCookieName === null ) {
-            // Come here when logged in to WordPress, but not
-            // MediaWiki.  Can trigger this by logging out from
-            // MediaWiki while logged in to WordPress.
-            $this->logger->info( "MARKER: BRANCH 1: " . $user->user_login );
-
-            $id = $this->hashToSessionId( $user->user_login );
-            $persisted = false;
-            $forceUse = true;
-
-#            return null;
-        } else {
-            $this->logger->info( "MARKER: BRANCH 2" );
-
-            $id = $this->getSessionIdFromCookie( $request );
-            $persisted = $id !== null;
-            $forceUse = false;
-        }
 
         // XXX Ideally: specify the groups in WordPress, and override
         // theme here!  See
@@ -316,95 +226,23 @@ class WPMWSessionProvider extends CookieSessionProvider {
 #                " userID is " . $user->getId() );
 #        }
 
-        return new SessionInfo( SessionInfo::MAX_PRIORITY, [
+
+        // All sessions are persisted!
+        return new SessionInfo( $this->priority, [
+            'forceHTTPS' => $this->getCookie(
+                $request, 'forceHTTPS', '', false ),
+            'id' => $sessionId,
+            'persisted' => true,
             'provider' => $this,
-            'id' => $id,
-            'userInfo' => $userInfo,
-            'persisted' => $persisted,
-            'forceUse' => $forceUse,
+            'userInfo' => $userInfo
         ] );
     }
 
 
-    // XXX Defining this empty re-enables the logout link, but why?
-    // Then, logging out will kill the MediaWiki session, but not the
-    // WordPress ditto.
-/*
-    // XXX Only now notice: "Logging out is not possible when using
-    // WPMWSessionProider sessions"
-    public function refreshSessionInfo(
-        SessionInfo $info, WebRequest $request, &$metadata ) {
-        $this->logger->info( "MARKER: in refreshSessionInfo()" );
-
-
-        // Logout function points to
-        // https://cryoem.ucla.edu/mediawiki/index.php?title=Special:UserLogout&returnto=Special%3ASpecialPages&logoutToken=a5d845dfbdc4dbbcd667c0faa467e1ee5ea13f2b%2B%5C
-
-#        $userInfo = $info->getUserInfo();
-#        $user = $userInfo->getUser();
-#        $token = $user->getEditToken( 'logoutToken' );
-
-        // XXX Need the token here, somehow.  Otherwise will have to
-        // click twice!
-
-        $url = "Special:Userlogout";
-        Hooks::register(
-            'PersonalUrls',
-            function ( &$personalurls ) use ( $url, $metadata ) {
-                if ( $url instanceof Closure ) {
-                    $url = call_user_func( $url, $metadata );
-                }
-                $internal = Title::newFromText( $url );
-
-                if ( $internal && $internal->isKnown() ) {
-                    $url = $internal->getLinkURL();
-                }
-
-#                $internal = Title::newFromText( 'Special:Userlogout' );
-#                $url = $internal->getLinkURL();
-
-                $personalurls[ 'logout' ] = [
-                    'href' => $url,
-                    'text' => wfMessage( 'pt-userlogout' )->text(),
-                    'active'=>false
-                ];
-                return true;
-            }
-        );
-
-        Hooks::register(
-            'UserLogoutComplete',
-            function() use ( $url ) {
-                wp_logout();
-#                echo "MARKER logoutcomplete";
-                global $wgOut;
-                $wgOut->redirect( $url );
-                return true;
-            }
-        );
-        return true;
-
-        return true;
-    }
-*/
-
-
-    // XXX Stuff for testing below
+    // XXX Stuff for testing below.  This is called on logout.
     public function unpersistSession( WebRequest $request ) {
-        // This is called on logout
-
         $this->logger->info( "MARKER: unpersistSession()" );
-
         wp_logout();
-
         return parent::unpersistSession( $request );
-    }
-
-
-    public function setLoggedOutCookie( $loggedOut, WebRequest $request ) {
-        // called before displaying the login-stuff when nobody is
-        // logged in
-        $this->logger->info( "MARKER: setLoggedOutCookie()" );
-        return parent::setLoggedOutCookie( $loggedOut, $request );
     }
 }
