@@ -58,6 +58,17 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $request );
 #        list( $userId, $userName, $token ) = parent::getUserInfoFromCookies(
 #            $request );
+
+        $wp_user = wp_get_current_user();
+        if ( $wp_user->exists() ) {
+            $wp_canonical_name =  User::getCanonicalName(
+                $wp_user->user_login, 'usable' );
+            $this->logger->info(
+                "MARKER: canonical WP name: " . $wp_canonical_name);
+        } else {
+            $this->logger->info( "MARKER: no canonical WP name");
+        }
+
         if ( $userId !== null ) {
             try {
                 $userInfo = UserInfo::newFromId( $userId );
@@ -91,17 +102,28 @@ class WPMWSessionProvider extends CookieSessionProvider {
                         ] );
                     return null;
                 }
-                return $userInfo->verified();
+                $userInfo = $userInfo->verified();
 #                $info['persisted'] = true; // If we have user+token,
 #                                           // it should be XXX
 #                                           // Commented, set outside
 #                                           // this function, always
 #                                           // true when this guy
 #                                           // returns non-null
-            } elseif ( isset( $sessionId ) ) {
-                return $userInfo;
+            } elseif ( $sessionId === null ) {
+                return null;
             }
-        } elseif ( isset( $sessionId ) ) {
+
+
+            // XXX Check must match WP user!
+
+            if (!isset($wp_canonical_name) || $wp_canonical_name != $userName) {
+                return null;
+            }
+
+
+            return $userInfo;
+
+        } elseif ( $sessionId !== null ) {
             // No UserID cookie, so insist that the session is anonymous.
             // Note: this event occurs for several normal activities:
             // * anon visits Special:UserLogin
@@ -119,8 +141,24 @@ class WPMWSessionProvider extends CookieSessionProvider {
         // point in returning, loadSessionInfoFromStore() will reject
         // it anyway.
 
-        // Or: No session ID and no user is the same as an empty session, so
-        // there's no point.
+        // Or: No session ID and no user is the same as an empty
+        // session, so there's no point.
+
+        // recover:
+        if ( isset($wp_canonical_name) ) {
+            try {
+                $userInfo = UserInfo::newFromName( $wp_canonical_name, true );
+                return $userInfo;
+            } catch ( \InvalidArgumentException $ex ) {
+                // XXX Expect to get here for authenticated users that
+                // have not been provisioned.  Either users are
+                // provisioned by AuthProvider, or they should be
+                // provisioned here?
+                return null;
+            }
+        }
+
+
         return null;
     }
 
@@ -128,6 +166,16 @@ class WPMWSessionProvider extends CookieSessionProvider {
     public function provideSessionInfo( WebRequest $request ) {
 
         $this->logger->info( "MARKER: Here we go at " . $this->priority );
+
+        $wp_user = wp_get_current_user();
+        if ( $wp_user->exists() ) {
+            $wp_canonical_name =  User::getCanonicalName(
+                $wp_user->user_login, 'usable' );
+            $this->logger->info(
+                "MARKER: 111 canonical WP name: " . $wp_canonical_name);
+        } else {
+            $this->logger->info( "MARKER: 111 no canonical WP name");
+        }
 
 
         // Returns null when nobody logged in.
@@ -144,14 +192,29 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $info['persisted'] = true;
         }
 
-        $info['userInfo'] = $this->parent_provideInfo(
-            $request, isset( $info['id'] ) ? $info['id'] : null );
+
+        if ( isset( $info['id'] ) ) {
+            $info['userInfo'] = $this->parent_provideInfo(
+                $request, $info['id'] );
+
+        } else {
+            $info['userInfo'] = $this->parent_provideInfo( $request, null );
+            if ($info['userInfo'] === null) {
+                return null;
+            }
+            $info['id'] = $this->hashToSessionId(
+                $info['userInfo']->getName() );
+            $info['persisted'] = true; # XXX WTF?!
+        }
+
 
         if ($info['userInfo']) {
             $sessionInfo = new SessionInfo( $this->priority, $info );
         } else {
             $sessionInfo = null;
         }
+        return $sessionInfo;
+
 
         if ( $sessionInfo === null ) {
             $this->logger->info( "MARKER: sessionInfo is null" );
@@ -164,16 +227,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 // userInfo is guaranteed to match the logged in WP
                 // user, no need to check whether
                 // $userInfo()->getName() matches $user->user_login.
-                try {
-                    $userInfo = UserInfo::newFromName(
-                        $user->user_login, true );
-                } catch ( \InvalidArgumentException $ex ) {
-                    // XXX Expect to get here for authenticated users
-                    // that have not been provisioned.  Either users
-                    // are provisioned by AuthProvider, or they should
-                    // be provisioned here?
-                    return null;
-                }
 
                 $this->logger->info("MARKER: WP user is provisioned");
 
