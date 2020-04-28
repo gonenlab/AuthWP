@@ -51,22 +51,22 @@ class WPMWSessionProvider extends CookieSessionProvider {
     }
 
 
-    public function parent_provideInfo(
-        WebRequest $request, $sessionId = null ) {
-
+    // Returns null when nobody logged in.
+    public function provideUserInfo( WebRequest $request, $sessionId = null ) {
         list( $userId, $userName, $token ) = $this->getUserInfoFromCookies(
             $request );
 #        list( $userId, $userName, $token ) = parent::getUserInfoFromCookies(
 #            $request );
 
+        // Cannot fail here, because user may be logged in to non-WP account.
         $wp_user = wp_get_current_user();
         if ( $wp_user->exists() ) {
             $wp_canonical_name =  User::getCanonicalName(
                 $wp_user->user_login, 'usable' );
             $this->logger->info(
-                "MARKER: canonical WP name: " . $wp_canonical_name);
+                "MARKER: canonical WP name: " . $wp_canonical_name );
         } else {
-            $this->logger->info( "MARKER: no canonical WP name");
+            $this->logger->info( "MARKER: no canonical WP name" );
         }
 
         if ( $userId !== null ) {
@@ -114,12 +114,15 @@ class WPMWSessionProvider extends CookieSessionProvider {
             }
 
 
-            // XXX Check must match WP user!
+            // XXX Check must match WP user!  Fishy!  What about
+            // non-WP users? Those that are not in WP as per
+            // AuthenticationProvider?
+            $this->logger->info( "MARKER are we there yet?" );
 
             if (!isset($wp_canonical_name) || $wp_canonical_name != $userName) {
+                $this->logger->info( "MARKER are we there yet? NULL!" );
                 return null;
             }
-
 
             return $userInfo;
 
@@ -158,7 +161,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
             }
         }
 
-
         return null;
     }
 
@@ -167,53 +169,42 @@ class WPMWSessionProvider extends CookieSessionProvider {
 
         $this->logger->info( "MARKER: Here we go at " . $this->priority );
 
+/*
         $wp_user = wp_get_current_user();
         if ( $wp_user->exists() ) {
             $wp_canonical_name =  User::getCanonicalName(
                 $wp_user->user_login, 'usable' );
             $this->logger->info(
-                "MARKER: 111 canonical WP name: " . $wp_canonical_name);
+                "MARKER: 111 canonical WP name: " . $wp_canonical_name );
         } else {
-            $this->logger->info( "MARKER: 111 no canonical WP name");
+            $this->logger->info( "MARKER: 111 no canonical WP name" );
         }
-
-
-        // Returns null when nobody logged in.
+*/
 
         $sessionId = $this->getCookie(
             $request, $this->params['sessionName'], '' );
-        $info = [
-            'provider' => $this,
-            'forceHTTPS' => $this->getCookie(
-                $request, 'forceHTTPS', '', false )
-        ];
+
         if ( SessionManager::validateSessionId( $sessionId ) ) {
-            $info['id'] = $sessionId;
-            $info['persisted'] = true;
-        }
-
-
-        if ( isset( $info['id'] ) ) {
-            $info['userInfo'] = $this->parent_provideInfo(
-                $request, $info['id'] );
-
-        } else {
-            $info['userInfo'] = $this->parent_provideInfo( $request, null );
-            if ($info['userInfo'] === null) {
+            $userInfo = $this->provideUserInfo( $request, $sessionId );
+            if ($userInfo === null) {
                 return null;
             }
-            $info['id'] = $this->hashToSessionId(
-                $info['userInfo']->getName() );
-            $info['persisted'] = true; # XXX WTF?!
-        }
 
-
-        if ($info['userInfo']) {
-            $sessionInfo = new SessionInfo( $this->priority, $info );
         } else {
-            $sessionInfo = null;
+            $userInfo = $this->provideUserInfo( $request, null );
+            if ($userInfo === null) {
+                return null;
+            }
+            $sessionId = $this->hashToSessionId( $userInfo->getName() );
         }
-        return $sessionInfo;
+
+        return new SessionInfo( $this->priority, [
+            'forceHTTPS' => $this->getCookie( $request, 'forceHTTPS', '', false ),
+            'id' => $sessionId,
+            'persisted' => true,
+            'provider' => $this,
+            'userInfo' => $userInfo
+        ] );
 
 
         if ( $sessionInfo === null ) {
@@ -269,7 +260,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
             // SessionProviders will allow work to continue.  Log in
             // on MediaWiki, log out in WordPress, return to MediaWiki
             // and find that we're still logged in
-
             $this->setLoggedOutCookie( time(), $request ); // Not for this class; nah, seems OK
             $this->unpersistSession( $request ); // Does not work
             $this->logger->info(
