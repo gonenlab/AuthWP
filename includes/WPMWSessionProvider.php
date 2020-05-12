@@ -31,7 +31,8 @@ use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\UserInfo;
 
-// XXX Ideally, the relative path to wp-load.php should be configurable
+// XXX Ideally, the relative path to wp-load.php should be
+// configurable
 require_once( '../wp-load.php' );
 
 
@@ -77,7 +78,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
         if ( $userId !== null ) {
             $this->logger->info(
                 "MARKER have userId: " . $userId . " userName " . $userName );
-
 
             // If there is a UserID cookie, the user must already be
             // provisioned.
@@ -191,7 +191,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
         //
         // Or: No session ID and no user is the same as an empty
         // session, so there's no point.
-
+        //
         // recover: XXX looks like we never get here...  Yes we do!
         // auto-creation buggered without it!  But the log messages
         // never show up!  We don't pass through here if the user is
@@ -201,10 +201,10 @@ class WPMWSessionProvider extends CookieSessionProvider {
         // that auto-create must be enabled in the configuration file
         // to work.
         //
-        //  From SessionProvider's provideSessionInfo() documentation:
-        //  "The SessionProvider must not attempt to auto-create
-        //  users.  MediaWiki will do this later (when it's safe) if
-        //  the chose session has a user with a valid name, but no ID.
+        // From SessionProvider's provideSessionInfo() documentation:
+        // "The SessionProvider must not attempt to auto-create users.
+        // MediaWiki will do this later (when it's safe) if the chose
+        // session has a user with a valid name, but no ID.
         if ( isset($wp_canonical_name) ) {
 #            try {
                 $this->logger->info("MARKER: auto-creating 2...");
@@ -304,7 +304,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
 
 
 /*
-    # unpersistSession() is called on logout.
+    // unpersistSession() is called on logout.
     public function unpersistSession( WebRequest $request ) {
         $this->logger->info( "MARKER: unpersistSession()" );
 #        wp_logout();
