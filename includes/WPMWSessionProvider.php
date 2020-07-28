@@ -25,21 +25,62 @@
  * See also https://github.com/eellak/mediawiki-wordpress-sso-extension/blob/master/AuthWP.php
  */
 
+/**
+ * for provideSessionInfo(): apparently cannot get this into
+ * extension.json, and how to credit whoever wrote this?  Others?
+ *
+ * MediaWiki cookie-based session provider interface
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * http://www.gnu.org/copyleft/gpl.html
+ *
+ * @file
+ * @ingroup Session
+ */
+
+
 #use MediaWiki\Session\SessionProvider;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\CookieSessionProvider;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\UserInfo;
 
-// XXX Ideally, the relative path to wp-load.php should be
-// configurable
-require_once( '../wp-load.php' );
+
+// Load
+#require_once( '../wp-load.php' );
+$config = MediaWikiServices::getInstance()
+        ->getConfigFactory()
+        ->makeConfig( 'WPMW' );
+require_once(
+    $config->get( 'WPMWPath' ) . DIRECTORY_SEPARATOR . 'wp-load.php' );
 
 
+/* A lot of documentation at
+ * https://doc.wikimedia.org/mediawiki-core/master/php/classMediaWiki_1_1Session_1_1SessionProvider.html
+ */
 class WPMWSessionProvider extends CookieSessionProvider {
-    // XXX Make priority configurable?
     public function __construct( $params = [] ) {
-        $params += [ 'priority' => SessionInfo::MAX_PRIORITY ];
+        $config = MediaWikiServices::getInstance()
+                ->getConfigFactory()
+                ->makeConfig( 'WPMW' );
+
+        // Does this really work if it's not at
+        // SessionInfo::MAX_PRIORITY?  No, red herring...
+#        $params += [ 'priority' => SessionInfo::MAX_PRIORITY ];
+        $params += [ 'priority' => $config->get( 'WPMWPriority' ) ];
         parent::__construct( $params );
         \Hooks::register( 'UserLogout', [ $this, 'onUserLogout' ]);
     }
@@ -57,14 +98,24 @@ class WPMWSessionProvider extends CookieSessionProvider {
     // session exists for the request, return null.  Otherwise return
     // a SessionInfo object identifying the session."
     //
-    // This closely follows
+    // This closely follows provideSessionInfo() from
     // https://doc.wikimedia.org/mediawiki-core/master/php/CookieSessionProvider_8php_source.html
-    public function provideUserInfo( WebRequest $request, $sessionId = null ) {
-        list( $userId, $userName, $token ) = $this->getUserInfoFromCookies(
-            $request );
+    // XXX Note that in the credits, somehow.
+    public function provideSessionInfo( WebRequest $request ) {
+        $sessionId = $this->getCookie( $request, $this->params['sessionName'], '' );
+        $info = [
+            'provider' => $this,
+            'forceHTTPS' => $this->getCookie( $request, 'forceHTTPS', '', false)
+        ];
+        if ( SessionManager::validateSessionId( $sessionId ) ) {
+            $info['id'] = $sessionId;
+            $info['persisted'] = true;
+        }
+
 
         // Cannot fail (return null) here, because user may be logged
-        // in to non-WP account.
+        // in to MediaWiki but not WordPress.  The user may not even
+        // have a WordPress account (e.g. MediaWiki administrator).
         $wp_user = wp_get_current_user();
         if ( $wp_user->exists() ) {
             $wp_canonical_name =  User::getCanonicalName(
@@ -75,15 +126,34 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $this->logger->info( "MARKER: no canonical WP name" );
         }
 
+        list( $userId, $userName, $token ) = $this->getUserInfoFromCookies(
+            $request );
         if ( $userId !== null ) {
             $this->logger->info(
                 "MARKER have userId: " . $userId . " userName " . $userName );
+
+            // If the user exists in WordPress but is not logged in,
+            // kill the MediaWiki cookie.  It does not matter whether
+            // the cookie is valid session or not.  This is not
+            // working: see this message, but can still access
+            // MediaWiki, but only for one page!
+            if ( username_exists($userName) ) {
+                if ( !isset($wp_canonical_name) ||
+                     $wp_canonical_name !== $userName) {
+                    $this->logger->info(
+                        "MARKER WordPress user " . $userName .
+                        " not logged in; logging out of MediaWiki" );
+                    $this->unpersistSession( $request );
+                    return null;
+                }
+            }
 
             // If there is a UserID cookie, the user must already be
             // provisioned.
             try {
                 $userInfo = UserInfo::newFromId( $userId );
             } catch ( \InvalidArgumentException $ex ) {
+                $this->logger->info( "MARKER caught exception" );
                 return null;
             }
 
@@ -116,61 +186,103 @@ class WPMWSessionProvider extends CookieSessionProvider {
                         ] );
                     return null;
                 }
+
+                // Edge allows us to pass when we go through here, but
+                // not Firefox.
+                $this->logger->info( "MARKER setting persisted" );
+
                 $userInfo = $userInfo->verified();
-#                $info['persisted'] = true; // If we have user+token,
-#                                           // it should be XXX
-#                                           // Commented, set outside
-#                                           // this function, always
-#                                           // true when this guy
-#                                           // returns non-null
-            } elseif ( $sessionId === null ) {
+                $info['persisted'] = true; // If we have user+token, it should be
+            } elseif ( isset( $info['id'] ) ) {
+                // XXX Set persisted here to avoid MediaWiki logout
+                // after inactivity?  Why will this not grant us rights
+                // to go on (if we pass through here, we still need to
+                // log back on)? This is where we come after logging in
+                // to MediaWiki.
+                //
+                // Get "Unverified user provided and no metadata to
+                // auth it" after going through here.  From
+                // https://phabricator.wikimedia.org/T158367: failed
+                // cookie authentication attempts (e.g. session
+                // timeout).
+                //
+                // After a reload, see " Wrong provider
+                // WPMWSessionProvider !==
+                // MediaWiki\Session\CookieSessionProvider", then
+                // second reload logs us in...
+                $this->logger->info( "MARKER persist here 1?  Verify?" );
+
+                $info['userInfo'] = $userInfo;
+            } else {
+                // No point in returning, loadSessionInfoFromStore() will
+                // reject it anyway.
+                $this->logger->info( "MARKER persist here 1.5?" );
                 return null;
             }
 
+            // Why do we get "Login required" when we get here?
+            $this->logger->info( "MARKER first clause, the end" );
 
-            // XXX Check must match WP user!  Fishy!  What about
-            // non-WP users? Those that are not in WP as per
-            // AuthenticationProvider?  If this returns null, then the
-            // MediaWiki and WordPress sessions will be destroyed.
-            //
-            // XXX How do we know userInfo is valid with MediaWiki?
-            // isAnon() returns true or equivalently isRegistered()
-            // returns false.  Apparently isRegistered() cannot be
-            // used to determine whether provisioning is necessary.
-            $this->logger->info( "MARKER are we there yet?" );
+#            return new SessionInfo( $this->priority, $info );
 
-            if ( username_exists($userName) ) {
-                if (!isset($wp_canonical_name) ||
-                    $wp_canonical_name != $userName) {
-                    // We get here if the user has a valid MediaWiki
-                    // session, but is not logged in to WordPress.
-                    // Log the user out of MediaWiki?
-                    $this->logger->info( "MARKER are we there yet? NULL!" );
-                    $this->unpersistSession( $request );
-                    return null;
-                }
-            }
 
-            return $userInfo;
-
-        } elseif ( $sessionId !== null ) {
-/*
+        } elseif ( isset( $info['id'] ) ) {
             // Don't get here...
             //
-            // YES WE DO! Get here after creating a user in WordPress,
-            // then accessing MediaWiki.  User must be registered if
-            // we get here...
+            // YES WE DO! We get here after creating a MediaWiki user
+            // externally (e.g. in WordPress), then accessing
+            // MediaWiki.  User must be registered if we get here...
             //
             // INCONCLUSIVE: XXX TEST AGAIN!
+            //
+            // We do get here if we're creating a new user in
+            // MediaWiki, and want to create that user in WordPress,
+            // too!  No, zap that last comment...
+            //
+            // But we do get here if we try to join the wiki
+            //
+            // No, I think we're all good
+            //
+            // No, again!  Get here after session is expired?  Logged
+            // in to MediaWiki and did NOT check the "keep me logged
+            // in" checkbox?
+
+#            $this->logger->info(
+#                "MARKER: auto-creating 0 (" . $wp_canonical_name . ")..." );
+            $this->logger->info( "MARKER: auto-creating 0..." );
+
+            // If the MediaWiki session is expired, but the WordPress
+            // session is still valid, renew the MediaWiki session.
+            // XXX Try without this bit and logging in AND checking
+            // the "keep me logged in" box... I'm guessing this should
+            // not be needed, then.  XXX Could possibly move the
+            // "isset($wp_canonical_name)" clause above this, and test
+            // for existence of MediaWiki user regardless of session
+            // status, but that call for another complete round of
+            // testing...
             if ( isset($wp_canonical_name) ) {
-                $this->logger->info("MARKER: auto-creating 0...");
-                $userInfo = UserInfo::newFromName( $wp_canonical_name, true );
-                $this->logger->info("MARKER: auto-creating 1...");
-                if ( $userInfo->getUser()->getId() != 0 ) { // XXX added this clause
+                $this->logger->info("MARKER: auto-creating 0.5...");
+                $info['userInfo'] = UserInfo::newFromName(
+                    $wp_canonical_name, true );
+                if ( $info['userInfo']->getUser()->getId() != 0 ) { // XXX added this clause
+
+                    $this->logger->info(
+                        "MARKER: auto-creating 1 for " . $wp_canonical_name .
+                        "..." );
+
+                    // This path still does not grant us access back
+                    // in...  we get "requested without UserID
+                    // cookie"; how can that possibly happen?
+                    return new SessionInfo( $this->priority, $info ); // if this is kept, should not return here, but fall through to the end
+
+                    $this->logger->info("MARKER: auto-creating NOTREACHED!");
+
+                    return $info;
                     return $userInfo;
                 }
+#                return null; // Return anonymous below instead.
             }
-*/
+
 
             // No UserID cookie, so insist that the session is anonymous.
             // Note: this event occurs for several normal activities:
@@ -182,133 +294,67 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 [
                     'session' => $sessionId,
                 ] );
-            return UserInfo::newAnonymous();
+            $info['userInfo'] = UserInfo::newAnonymous();
+
+#            return new SessionInfo( $this->priority, $info );
+        } elseif ( isset( $wp_canonical_name ) ) {
+
+            // Logged into WordPress, but there is no MediaWiki cookie
+            // or session.  If there is no MediaWiki account (and
+            // 'autocreate' is enabled) one will be created from the
+            // UserInfo set up here.
+            //
+            // From SessionProvider's provideSessionInfo()
+            // documentation: "The SessionProvider must not attempt to
+            // auto-create users.  MediaWiki will do this later (when
+            // it's safe) if the chose session has a user with a valid
+            // name, but no ID."
+            //
+            // From AuthManager::autoCreateUser() documentation:
+            // SessionProviders can invoke [auto-creation] by
+            // returning a SessionInfo with the username of a
+            // non-existing user from provideSessionInfo().
+            //
+            // Get here on the first round (when logged in to
+            // WordPress, but no MediaWiki account); then go to the
+            // above "auto-creating..."
+
+            $this->logger->info("MARKER: auto-creating 2...");
+
+            $userInfo = UserInfo::newFromName( $wp_canonical_name, true );
+
+            // The bit below only needed if there is no MediaWiki
+            // user...  We also get here after the MediaWiki session
+            // has expired, but the WordPress session is still around.
+#            $user = $userInfo->getUser(); // XXX Should not be commented
+#            $user->setEmail( $wp_user->user_email ); // XXX Should not be commented
+#            $user->setRealName( $wp_user->display_name ); // XXX Should not be commented
+
+            $this->logger->info("MARKER: auto-creating 3...");
+
+            // Would not understand if this happens... But after
+            // passing here, we are logged back in!  Need the
+            // hashToSessionId() thing?
+            $this->logger->info( "MARKER persist here 2?" );
+
+            $info['userInfo'] = $userInfo;
+
+#            $info['id'] = $this->hashToSessionId( $userInfo->getName() );
+
+#            return new SessionInfo( $this->priority, $info );
+
+        } else {
+            // No session ID, no user, and no WordPress login.  This
+            // is the same as an empty session, so there's no point.
+
+#            $this->logger->info("MARKER: auto-creating 4...");
+#            $info['userInfo'] = UserInfo::newAnonymous();
+
+            return null;
         }
 
-        // Either: Have userId, but no token or no sessionID.  No
-        // point in returning, loadSessionInfoFromStore() will reject
-        // it anyway.
-        //
-        // Or: No session ID and no user is the same as an empty
-        // session, so there's no point.
-        //
-        // recover: XXX looks like we never get here...  Yes we do!
-        // auto-creation buggered without it!  But the log messages
-        // never show up!  We don't pass through here if the user is
-        // auto-created by explicitly logging in...  That's because
-        // auto-provisioning happens elsewhere (we get here if user is
-        // logged in to WordPress when MediaWiki is accessed)... Note
-        // that auto-create must be enabled in the configuration file
-        // to work.
-        //
-        // From SessionProvider's provideSessionInfo() documentation:
-        // "The SessionProvider must not attempt to auto-create users.
-        // MediaWiki will do this later (when it's safe) if the chose
-        // session has a user with a valid name, but no ID.
-        if ( isset($wp_canonical_name) ) {
-#            try {
-                $this->logger->info("MARKER: auto-creating 2...");
-
-                $userInfo = UserInfo::newFromName( $wp_canonical_name, true );
-
-                $user = $userInfo->getUser();
-                $user->setEmail( $wp_user->user_email );
-                $user->setRealName( $wp_user->display_name );
-
-                $this->logger->info("MARKER: auto-creating 3...");
-
-                return $userInfo;
-/*
-            } catch ( \InvalidArgumentException $ex ) {
-                // XXX Expect to get here for authenticated users that
-                // have not been provisioned.  Either users are
-                // provisioned by AuthProvider, or they should be
-                // provisioned here?  Since $wp_canonical_name is a
-                // valid username, this should not throw an exception
-                // for valid user, and auto-creation should happen
-                // here.
-                //
-                // From AuthManager::autoCreateUser() documentation:
-                // SessionProviders can invoke [auto-creation] by
-                // returning a SessionInfo with the username of a
-                // non-existing user from provideSessionInfo().
-                $this->logger->info("MARKER: auto-creating 4...");
-                return null;
-            }
-*/
-        }
+        return new SessionInfo( $this->priority, $info );
 
         return null;
     }
-
-
-    public function provideSessionInfo( WebRequest $request ) {
-        $this->logger->info( "MARKER: Here we go at " . $this->priority );
-
-        $sessionId = $this->getCookie(
-            $request, $this->params['sessionName'], '' );
-
-        if ( SessionManager::validateSessionId( $sessionId ) ) {
-            $userInfo = $this->provideUserInfo( $request, $sessionId );
-            if ($userInfo === null) {
-                $this->logger->info( "MARKER: Wednesday 1" );
-                return null;
-            }
-
-#            if ( $userInfo->isAnon() ) {
-#                $this->logger->info(
-#                    "MARKER: " . $userInfo->getName() .
-#                    " is anonymous (NOT registered)" );
-#            } else {
-#                $this->logger->info(
-#                    "MARKER: " . $userInfo->getName() .
-#                    " is NOT anonymous (registered)" );
-#                $sessionId = $this->hashToSessionId( $userInfo->getName() );
-#            }
-
-        } else {
-            $userInfo = $this->provideUserInfo( $request, null );
-            if ($userInfo === null) {
-                $this->logger->info( "MARKER: Wednesday 2" );
-                return null;
-            }
-            $sessionId = $this->hashToSessionId( $userInfo->getName() );
-        }
-
-
-        // XXX Ideally: specify the groups in WordPress, and override
-        // theme here!  See
-        // https://www.mediawiki.org/wiki/Manual:User_rights; nah,
-        // maybe control MediaWiki from WordPress directly?  Cleaner,
-        // as it would be done from the theme.
-#        $user = $userInfo->getUser();
-#        foreach ( $user->getGroups() as $t ) {
-#            $this->logger->info(
-#                "MARKER: See a thing of " . $t .
-#                " userID is " . $user->getId() );
-#        }
-
-
-        // All sessions are persisted!
-        $this->logger->info(
-            "MARKER: creating SessionInfo for " . $userInfo->getName() );
-        return new SessionInfo( $this->priority, [
-            'forceHTTPS' => $this->getCookie(
-                $request, 'forceHTTPS', '', false ),
-            'id' => $sessionId,
-            'persisted' => true,
-            'provider' => $this,
-            'userInfo' => $userInfo
-        ] );
-    }
-
-
-/*
-    // unpersistSession() is called on logout.
-    public function unpersistSession( WebRequest $request ) {
-        $this->logger->info( "MARKER: unpersistSession()" );
-#        wp_logout();
-        return parent::unpersistSession( $request );
-    }
-*/
 }

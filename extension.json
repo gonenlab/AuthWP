@@ -11,6 +11,19 @@
     "requires": {
         "MediaWiki": ">= 1.27.0"
     },
+    "config": {
+        "WPMWPath": {
+            "value": "..",
+            "description": "Relative path to WordPress"
+        },
+        "WPMWPriority": {
+            "value": "100",
+            "description": "Priority of the returned sessions"
+        }
+    },
+    "ConfigRegistry": {
+        "WPMW": "GlobalVarConfig::newInstance"
+    },
     "AuthManagerAutoConfig": {
         "primaryauth": {
             "WPMWAuthenticationProvider": {
@@ -29,5 +42,5 @@
         "WPMWAuthenticationProvider": "includes/WPMWAuthenticationProvider.php",
         "WPMWSessionProvider": "includes/WPMWSessionProvider.php"
     },
-    "manifest_version": 1
+    "manifest_version": 2
 }
