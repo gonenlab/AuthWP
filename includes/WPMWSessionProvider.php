@@ -53,7 +53,8 @@
 
 #use MediaWiki\Session\SessionProvider;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Session\CookieSessionProvider;
+#use MediaWiki\Session\CookieSessionProvider;
+use MediaWiki\Session\ImmutableSessionProviderWithCookie;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\UserInfo;
@@ -71,24 +72,72 @@ require_once(
 /* A lot of documentation at
  * https://doc.wikimedia.org/mediawiki-core/master/php/classMediaWiki_1_1Session_1_1SessionProvider.html
  */
-class WPMWSessionProvider extends CookieSessionProvider {
+/* class WPMWSessionProvider extends CookieSessionProvider { */
+class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
     public function __construct( $params = [] ) {
+        parent::__construct( $params );
+
         $config = MediaWikiServices::getInstance()
                 ->getConfigFactory()
                 ->makeConfig( 'WPMW' );
 
-        // Does this really work if it's not at
-        // SessionInfo::MAX_PRIORITY?  No, red herring...
-#        $params += [ 'priority' => SessionInfo::MAX_PRIORITY ];
-        $params += [ 'priority' => $config->get( 'WPMWPriority' ) ];
-        parent::__construct( $params );
+        $this->priority = $config->get( 'WPMWPriority' );
+        if ( $this->priority < SessionInfo::MIN_PRIORITY ||
+             $this->priority > SessionInfo::MAX_PRIORITY ) {
+            throw new \InvalidArgumentException(
+                __METHOD__ . ": Invalid priority" );
+        }
+
+        \Hooks::register( 'SessionCheckInfo', [ $this, 'onSessionCheckInfo' ]);
         \Hooks::register( 'UserLogout', [ $this, 'onUserLogout' ]);
     }
 
 
+    // This re-enables the logout button.
+    public function canChangeUser() {
+        return true;
+    }
+
+
+    // The logout button only appears when logging in from MW, not WP
+    //
+    // XXX Would be more elegant if the the provider could make a
+    // "session" without the MW stuff in it.  Then, the next session
+    // provider would not be able to handle it either.  Can that me
+    // done with SessionManager from AuthProvider somehow?  If this is
+    // not there, users will also be prompted to confirm (submit)
+    // logout after clicking the "Log out" button.  This makes sense:
+    // log in to MW as Wiki admin, log in to WP as regular user, then
+    // MW user is regular user.  Log out regular user (either from MW
+    // or WP), then MW user is Wiki admin again.
+    public static function onSessionCheckInfo(
+        &$reason, $info, $request, $metadata, $data) {
+
+        $userinfo = $info->getUserInfo();
+        $username = $userinfo->getName();
+        if ( !username_exists( $username ) ) {
+            // WP does not know about the user.  Assume it's OK.
+            return true;
+        }
+
+        // WP knows about user, so user must be logged in
+        $wp_user = wp_get_current_user();
+        if ( $wp_user->exists() ) {
+            $wp_canonical_name =  User::getCanonicalName(
+                $wp_user->user_login, 'usable' );
+
+            if ( $wp_canonical_name == $username ) {
+                return true;
+            }
+        }
+
+        $reason = "Rejected session for " . $userinfo->getName();
+        return false;
+    }
+
+
     // Log out user from WordPress before logging out of MediaWiki
-    public function onUserLogout( &$user ) {
-        $this->logger->info( "MARKER userLogout hook called" );
+    public static function onUserLogout( &$user ) {
         wp_logout();
         return true;
     }
@@ -99,10 +148,73 @@ class WPMWSessionProvider extends CookieSessionProvider {
     // a SessionInfo object identifying the session."
     //
     // This closely follows provideSessionInfo() from
-    // https://doc.wikimedia.org/mediawiki-core/master/php/CookieSessionProvider_8php_source.html
+    // https://doc.wikimedia.org/mediawiki-core/master/php/CookieSessionProvider_8php_source.html.
     // XXX Note that in the credits, somehow.
     public function provideSessionInfo( WebRequest $request ) {
-        $sessionId = $this->getCookie( $request, $this->params['sessionName'], '' );
+        /// From
+        /// https://www.mediawiki.org/wiki/Manual:SessionManager_and_AuthManager/SessionProvider_examples
+        /// --- This switches back to the
+        /// ImmuatebleSessionProviderWithCookie, but that disables the
+        /// logout button! Does everything else work? Just switching
+        /// the class back breaks login.  Also, logging out from
+        /// WordPress does not log out the MediaWiki user (but there
+        /// is a logout button again).
+        $wp_user = wp_get_current_user();
+        if ( !$wp_user->exists() ) {
+            $this->logger->info( "No WP user: ");
+            return null;
+        }
+
+        $username =  User::getCanonicalName( $wp_user->user_login, 'usable' );
+        $userInfo = UserInfo::newFromName( $username, true );
+
+        $this->logger->info(
+            "WP user: " . $wp_user->user_login . " MW user " . $username );
+
+        if ( $this->sessionCookieName === null ) {
+            $id = $this->hashToSessionId( $username );
+            $persisted = false;
+            $forceUse = true;
+
+            $this->logger->info(
+                "No sessionCookieName, ID " . $id . " other " );
+
+        } else {
+            $this->logger->info( "Have sessionCookieName" );
+
+            $id = $this->getSessionIdFromCookie( $request );
+            $persisted = $id !== null;
+            $forceUse = false;
+        }
+
+#        $persisted = false;
+#        $forceUse = false;
+
+#        $persisted = false;
+#        $forceUse = true;
+
+        // This works?! But why? Do any of the other combinations
+        // work? Only works when logged in from WordPress?
+#        $persisted = true;
+#        $forceUse = false;
+
+#        $persisted = true;
+#        $forceUse = true;
+
+#        return new SessionInfo( SessionInfo::MAX_PRIORITY, [
+        return new SessionInfo( $this->priority, [
+            'provider' => $this,
+            'id' => $id,
+            'userInfo' => $userInfo,
+            'persisted' => $persisted,
+            'forceUse' => $forceUse,
+        ] );
+
+
+        /*** OLD CODE BELOW ***/
+
+        $sessionId = $this->getCookie(
+            $request, $this->params['sessionName'], '' );
         $info = [
             'provider' => $this,
             'forceHTTPS' => $this->getCookie( $request, 'forceHTTPS', '', false)
@@ -195,10 +307,10 @@ class WPMWSessionProvider extends CookieSessionProvider {
                 $info['persisted'] = true; // If we have user+token, it should be
             } elseif ( isset( $info['id'] ) ) {
                 // XXX Set persisted here to avoid MediaWiki logout
-                // after inactivity?  Why will this not grant us rights
-                // to go on (if we pass through here, we still need to
-                // log back on)? This is where we come after logging in
-                // to MediaWiki.
+                // after inactivity?  Why will this not grant us
+                // rights to go on (if we pass through here, we still
+                // need to log back on)? This is where we come after
+                // logging in to MediaWiki.
                 //
                 // Get "Unverified user provided and no metadata to
                 // auth it" after going through here.  From
@@ -224,7 +336,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
             $this->logger->info( "MARKER first clause, the end" );
 
 #            return new SessionInfo( $this->priority, $info );
-
 
         } elseif ( isset( $info['id'] ) ) {
             // Don't get here...
@@ -262,6 +373,7 @@ class WPMWSessionProvider extends CookieSessionProvider {
             // testing...
             if ( isset($wp_canonical_name) ) {
                 $this->logger->info("MARKER: auto-creating 0.5...");
+
                 $info['userInfo'] = UserInfo::newFromName(
                     $wp_canonical_name, true );
                 if ( $info['userInfo']->getUser()->getId() != 0 ) { // XXX added this clause
@@ -298,7 +410,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
 
 #            return new SessionInfo( $this->priority, $info );
         } elseif ( isset( $wp_canonical_name ) ) {
-
             // Logged into WordPress, but there is no MediaWiki cookie
             // or session.  If there is no MediaWiki account (and
             // 'autocreate' is enabled) one will be created from the
@@ -318,7 +429,6 @@ class WPMWSessionProvider extends CookieSessionProvider {
             // Get here on the first round (when logged in to
             // WordPress, but no MediaWiki account); then go to the
             // above "auto-creating..."
-
             $this->logger->info("MARKER: auto-creating 2...");
 
             $userInfo = UserInfo::newFromName( $wp_canonical_name, true );

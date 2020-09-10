@@ -80,7 +80,7 @@ class WPMWAuthenticationProvider extends
             'user_login' => $req->username,
             'user_email' => $userdata->email,
             'display_name' => $userdata->realname
-            ] );
+        ] );
         if ( is_wp_error( $wp_user) ) {
             return $this->failResponse( $req );
         }
@@ -93,8 +93,8 @@ class WPMWAuthenticationProvider extends
     // and 2: RememberMeAuthenticationRequest.
     public function beginPrimaryAuthentication ( array $reqs ) {
         $this->logger->info(
-            "MARKER in beginPrimaryAuthentication()" . count( $reqs ) .
-            "requests" );
+            "MARKER in beginPrimaryAuthentication(): " . count( $reqs ) .
+            " requests" );
 
         $req = AuthenticationRequest::getRequestByClass(
             $reqs, PasswordAuthenticationRequest::class );
@@ -183,7 +183,7 @@ class WPMWAuthenticationProvider extends
 
         $this->logger->info(
             "MARKER in providerAllowsAuthenticationDataChange() request type " .
-            get_class($req) . " checkData " . $checkData );
+            get_class( $req ) . " checkData " . $checkData );
         return \StatusValue::newGood();
     }
 
@@ -204,6 +204,7 @@ class WPMWAuthenticationProvider extends
 
     public function providerChangeAuthenticationData(
         AuthenticationRequest $req ) {
+
         $this->logger->info(
             "MARKER in providerChangeAuthenticationData() with a " .
             get_class( $req ) );
@@ -230,7 +231,8 @@ class WPMWAuthenticationProvider extends
     }
 
 
-    // This must be implemented (no implementation in the abstract class).
+    // This must be implemented (no implementation in the abstract
+    // class).
     public function testUserExists( $username, $flags = User::READ_NORMAL ) {
         $this->logger->info( "MARKER in testUserExists()" );
         return username_exists( $username ) ? true : false;
