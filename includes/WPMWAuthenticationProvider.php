@@ -29,6 +29,7 @@ require_once(
 
 class WPMWAuthenticationProvider extends
     AbstractPasswordPrimaryAuthenticationProvider {
+
     public function __construct() {
         parent::__construct();
         \Hooks::register( 'UserSetEmail', [ $this, 'onUserSetEmail' ]);
@@ -52,7 +53,7 @@ class WPMWAuthenticationProvider extends
 
         foreach ( $reqs as $req ) {
             $this->logger->info(
-                "MARKER see request of type " . get_class($req) );
+                "MARKER see request of type " . get_class( $req ) );
         }
 
         $req = AuthenticationRequest::getRequestByClass(
@@ -86,6 +87,12 @@ class WPMWAuthenticationProvider extends
         }
 
         return AuthenticationResponse::newPass();
+    }
+
+
+    public function postAuthentication(
+        $user, AuthenticationResponse $response) {
+        $this->logger->info( "MARKER postauthentication" );
     }
 
 
@@ -123,6 +130,25 @@ class WPMWAuthenticationProvider extends
                     $this->logger->info(
                         "MARKER in beginPrimaryAuthentication() WordPress says yes" );
                     return AuthenticationResponse::newPass( $req->username );
+
+                    // But this gives "The supplied credentials are
+                    // not associated with any user on this wiki" but
+                    // everything is fine after that?
+                    //
+                    // So for some reason wp_signon() does not do what
+                    // I want?!
+                    //
+                    // See
+                    // https://developer.wordpress.org/reference/functions/wp_signon/
+                    wp_set_current_user( $wp_user->ID );
+
+                    $wp_user_check = wp_get_current_user();
+                    $this->logger->info(
+                        "MARKER now have " . $wp_user_check->user_login .
+                        " expected ID " . $wp_user->ID );
+
+                    return AuthenticationResponse::newPass( $req->username );
+#                    return AuthenticationResponse::newPass();
                 }
 
                 $this->logger->info(
@@ -146,7 +172,7 @@ class WPMWAuthenticationProvider extends
 
 
 /*
-    // Not needed, identical to parent's implementation
+    // Not needed, identical to parent's implementation.
     public function getAuthenticationRequests( $action, array $options ) {
         $this->logger->info("MARKER getAuthenticationRequests(): " . $action );
 
@@ -184,6 +210,7 @@ class WPMWAuthenticationProvider extends
         $this->logger->info(
             "MARKER in providerAllowsAuthenticationDataChange() request type " .
             get_class( $req ) . " checkData " . $checkData );
+
         return \StatusValue::newGood();
     }
 
@@ -245,7 +272,8 @@ class WPMWAuthenticationProvider extends
     // in WordPress as in MediaWiki.
     public function testUserForCreation(
         $user, $autocreate, array $options = [] ) {
-        $this->logger->info("MARKER testUserForCreation()");
+
+        $this->logger->info( "MARKER testUserForCreation()" );
 
         if ( $autocreate ) {
             $wp_user = get_user_by( 'login', $user->getName() );

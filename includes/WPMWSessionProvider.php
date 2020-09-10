@@ -53,12 +53,19 @@
 
 #use MediaWiki\Session\SessionProvider;
 use MediaWiki\MediaWikiServices;
-#use MediaWiki\Session\CookieSessionProvider;
+//use MediaWiki\Session\CookieSessionProvider;
 use MediaWiki\Session\ImmutableSessionProviderWithCookie;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\UserInfo;
 
+#use MediaWiki\Session\SessionId;
+
+// Stuff to read: All (used) classes above (and in provider),
+// WebResponse, WebRequest,
+// https://www.mediawiki.org/wiki/Manual:SessionManager_and_AuthManager
+// (and links therein), The security page, the extension.json page,
+// the extension writing tutorial, relevant WP documentation blurbs
 
 // Load
 #require_once( '../wp-load.php' );
@@ -70,7 +77,7 @@ require_once(
 
 
 /* A lot of documentation at
- * https://doc.wikimedia.org/mediawiki-core/master/php/classMediaWiki_1_1Session_1_1SessionProvider.html
+ * https://doc.wikimedia.org/mediawiki-core/master/php/classMediaWiki_1_1Session_1_1SessionProvider.html.
  */
 /* class WPMWSessionProvider extends CookieSessionProvider { */
 class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
@@ -88,8 +95,9 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
                 __METHOD__ . ": Invalid priority" );
         }
 
-        \Hooks::register( 'SessionCheckInfo', [ $this, 'onSessionCheckInfo' ]);
+#        \Hooks::register( 'SessionCheckInfo', [ $this, 'onSessionCheckInfo' ]);
         \Hooks::register( 'UserLogout', [ $this, 'onUserLogout' ]);
+#        \Hooks::register( 'UserLogoutComplete', [ $this, 'onUserLogoutComplete' ]);
     }
 
 
@@ -143,6 +151,64 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
     }
 
 
+    public static function onUserLogoutComplete(
+        &$user, &$inject_html, $old_name ) {
+        wp_logout();
+        return true;
+    }
+
+
+    // XXX Can maybe do something with this after all?  Because if
+    // this is enabled, stuff seems to work!  Except it cannot return
+    // false if there is a valid wp_user!
+/*
+    public function refreshSessionInfo(
+        SessionInfo $info, WebRequest $request, &$metadata ) {
+
+        $this->logger->info( "MARKER in refreshSessionInfo" );
+
+        $userinfo = $info->getUserInfo();
+        $username = $userinfo->getName();
+        if ( !username_exists( $username ) ) {
+            // WP does not know about the user.  Assume it's OK
+            return true;
+        }
+
+        // WP knows about user, so user must be logged in
+        $wp_user = wp_get_current_user();
+        if ( $wp_user->exists() ) {
+            $wp_canonical_name =  User::getCanonicalName(
+                $wp_user->user_login, 'usable' );
+
+            if ( $wp_canonical_name == $username ) {
+                return true;
+            }
+        }
+
+        $reason = "Rejected session for " . $userinfo->getName();
+        return false;
+
+
+        // *** OLD CODE BELOW ***
+
+        $wp_user = wp_get_current_user();
+        if ( $wp_user->exists() ) {
+            $this->logger->info( "MARKER in refreshSessionInfo FALSE" );
+            return true; // ???
+        }
+        $this->logger->info( "MARKER in refreshSessionInfo TRUE" );
+        return false;
+    }
+*/
+
+/*
+    public function newSessionInfo( $id=null ) {
+        $this->logger->info( "MARKER in newSessionInfo" );
+        return null;
+    }
+*/
+
+
     // From SessionProvider's provideUserInfo() documentation: "If no
     // session exists for the request, return null.  Otherwise return
     // a SessionInfo object identifying the session."
@@ -150,20 +216,97 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
     // This closely follows provideSessionInfo() from
     // https://doc.wikimedia.org/mediawiki-core/master/php/CookieSessionProvider_8php_source.html.
     // XXX Note that in the credits, somehow.
+    //
+    // When pressing logout, now get "Do you want to log out", and
+    // irrespective of the next action, the user is logged out.
     public function provideSessionInfo( WebRequest $request ) {
-        /// From
-        /// https://www.mediawiki.org/wiki/Manual:SessionManager_and_AuthManager/SessionProvider_examples
-        /// --- This switches back to the
-        /// ImmuatebleSessionProviderWithCookie, but that disables the
-        /// logout button! Does everything else work? Just switching
-        /// the class back breaks login.  Also, logging out from
-        /// WordPress does not log out the MediaWiki user (but there
-        /// is a logout button again).
+        // From
+        // https://www.mediawiki.org/wiki/Manual:SessionManager_and_AuthManager/SessionProvider_examples
+        // --- This switches back to the
+        // ImmuatebleSessionProviderWithCookie, but that disables the
+        // logout button! Does everything else work? Just switching
+        // the class back breaks login.  Also, logging out from
+        // WordPress does not log out the MediaWiki user (but there is
+        // a logout button again).
         $wp_user = wp_get_current_user();
+        $this->logger->info( "IN PROVIDESESSIONINFO()" );
         if ( !$wp_user->exists() ) {
             $this->logger->info( "No WP user: ");
+
+            return null;
+
+/*
+            if ($this->sessionCookieName === null) {
+                $this->logger->info( "SessionCookieName is NULL" );
+            } else {
+                $this->logger->info( "SessionCookieName is NOT NULL" );
+            }
+
+#            $id = $this->getSessionIdFromCookie( $request );
+#            $this->logger->info( "Got ID " . $id );
+
+            // This should do whatever happens when the
+            // SessionCheckInfo callback returns false?
+
+            $id = $request->getCookie( "UserID" );
+            $this->logger->info( "Got id from cookie " . $id );
+            if ( $id !== null ) {
+                $userInfo = UserInfo::newFromId( $id );
+
+                $this->logger->info(
+                    "Got userName from ID cookie " . $userInfo->getName() );
+
+                if ( $userInfo && username_exists( $userInfo->getName() ) ) {
+                    $response = $request->response();
+
+                    // Do I also need to do something about the
+                    // request?  If we are
+#                    $request->setSessionId( SessionId::SessionId("") );
+
+#                    if ( $response )
+                    $response->clearCookie("UserID");
+                }
+            }
+*/
+        } else {
+            $this->logger->info( "Getting UserID cookie" );
+
+            $id = $request->getCookie( "UserID" );
+            if ( $id !== null ) {
+                $this->logger->info( "Getting UserInfo" );
+
+                $userInfo = UserInfo::newFromId( $id );
+                if ( $userInfo->getName() == $wp_user->user_login )
+                    $this->logger->info( "Clearing UserID cookie" );
+
+                $response = $request->response();
+                $response->clearCookie("UserID");
+            }
+        }
+
+
+        // Don't do this, because it will clear the Username field in
+        // the "Log in" page.
+/*
+        $userName = $request->getCookie( "UserName" );
+        $this->logger->info( "Got username from cookie " . $userName );
+        if ( username_exists( $userName ) ) {
+            $response->clearCookie("UserName");
+        }
+
+        $session = $manager->getSessionForRequest( $request );
+        $session = $request->getSession();
+
+        $this->logger->info( "Got SessionInfo ID " . $session );
+
+        $response->setCookie("nisse", "pelle" );
+
+        return null;
+
+        if ( !$wp_user->exists() ) {
             return null;
         }
+*/
 
         $username =  User::getCanonicalName( $wp_user->user_login, 'usable' );
         $userInfo = UserInfo::newFromName( $username, true );
@@ -387,7 +530,7 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
                     // cookie"; how can that possibly happen?
                     return new SessionInfo( $this->priority, $info ); // if this is kept, should not return here, but fall through to the end
 
-                    $this->logger->info("MARKER: auto-creating NOTREACHED!");
+                    $this->logger->info( "MARKER: auto-creating NOTREACHED!" );
 
                     return $info;
                     return $userInfo;
