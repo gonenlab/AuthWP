@@ -1,10 +1,22 @@
 <?php
+/**
+ * WPMW session provider
+ *
+ * This program is free software: you can redistribute it and/or
+ * modify it under the terms of the GNU Affero General Public License
+ * as published by the Free Software Foundation, either version 3 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public
+ * License along with this program.  If not, see
+ * <http://www.gnu.org/licenses/>.
+ */
 
-#use MediaWiki\MediaWikiServices;
-#use MediaWiki\Session\ImmutableSessionProviderWithCookie;
-#use MediaWiki\Session\UserInfo;
-#use MediaWiki\Session\SessionInfo;
-#use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\Auth\AbstractPasswordPrimaryAuthenticationProvider;
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
@@ -12,194 +24,113 @@ use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\PasswordAuthenticationRequest;
 use MediaWiki\Auth\RememberMeAuthenticationRequest;
 use MediaWiki\Auth\UserDataAuthenticationRequest;
-
-#use MediaWiki\Auth\TemporaryPasswordAuthenticationRequest;
-#use MediaWiki\Auth\PasswordDomainAuthenticationRequest;
-
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Session\UserInfo;
 
 
-#require_once( '../wp-load.php' );
-$config = MediaWikiServices::getInstance()
-        ->getConfigFactory()
-        ->makeConfig( 'WPMW' );
-require_once(
-    $config->get( 'WPMWPath' ) . DIRECTORY_SEPARATOR . 'wp-load.php' );
+// Bootstrap WordPress.  This seems rather foolish since surely the
+// names of things are bound to clash somewhere, but we want to be
+// able to handle everything as if WordPress was doing it natively
+// including respecting any plugins that might be in place.
+if ( php_sapi_name() !== 'cli' ) {
+    // Relative path to WordPress installation.  In the default '..'
+    // MediaWiki is installed in a 'wiki' directory off the main
+    // WordPress root.
+    $WP_relpath = MediaWikiServices::getInstance()
+                 ->getConfigFactory()
+                 ->makeConfig( 'WPMW' )
+                 ->get( 'WPMWPath' );
+    require_once $WP_relpath
+        . DIRECTORY_SEPARATOR . 'wp-load.php';
+    require_once $WP_relpath
+        . DIRECTORY_SEPARATOR . 'wp-includes'
+        . DIRECTORY_SEPARATOR . 'registration.php';
+}
 
 
+/**
+ * A MediaWiki extension to delegate authentication and user
+ * management to a local WordPress installation.  See
+ * http://ciarang.com/wiki/page/WPMW for more information.
+ */
 class WPMWAuthenticationProvider extends
     AbstractPasswordPrimaryAuthenticationProvider {
 
-    public function __construct() {
-        parent::__construct();
-        \Hooks::register( 'UserSetEmail', [ $this, 'onUserSetEmail' ]);
-    }
-
-
-    // Users must be created in WordPress, not here.  We do not
-    // ACTUALLY create WordPress accounts here, even though we could!
-    // Now we do, because the old AuthWP actually does.
+    // Automatically create a local account when asked to log in a
+    // user that does not exist locally.
     public function accountCreationType() {
         return self::TYPE_CREATE;
-#        return self::TYPE_NONE;
     }
 
 
-    // Must be implemented.
+    // Add a user created in MediaWiki to the WordPress database.  XXX
+    // This will not result in an email notification from WordPress.
     public function beginPrimaryAccountCreation(
         $user, $creator, array $reqs ) {
 
-        $this->logger->info( "MARKER in beginPrimaryAccountCreation()" );
-
-        foreach ( $reqs as $req ) {
-            $this->logger->info(
-                "MARKER see request of type " . get_class( $req ) );
-        }
-
-        $req = AuthenticationRequest::getRequestByClass(
+        $req_password = AuthenticationRequest::getRequestByClass(
             $reqs, PasswordAuthenticationRequest::class );
-
-        $this->logger->info(
-            "MARKER in beginPrimaryAccountCreation(): user: " .
-            $req->username );
-        $this->logger->info(
-            "MARKER in beginPrimaryAccountCreation(): password: " .
-            $req->password );
-
-        $userdata = AuthenticationRequest::getRequestByClass(
+        $req_userData = AuthenticationRequest::getRequestByClass(
             $reqs, UserDataAuthenticationRequest::class );
 
-        $this->logger->info(
-            "MARKER in beginPrimaryAccountCreation(): email: " .
-            $userdata->email );
-        $this->logger->info(
-            "MARKER in beginPrimaryAccountCreation(): realname: " .
-            $userdata->realname );
-
-        $wp_user = wp_insert_user( [
-            'user_pass' => $req->password,
-            'user_login' => $req->username,
-            'user_email' => $userdata->email,
-            'display_name' => $userdata->realname
-        ] );
-        if ( is_wp_error( $wp_user) ) {
-            return $this->failResponse( $req );
+        if ( is_wp_error( wp_insert_user( [
+            'display_name' => $req_userData->realname,
+            'user_email' => $req_userData->email,
+            'user_login' => $req_password->username,
+            'user_pass' => $req_password->password
+        ] ) ) ) {
+            return $this->failResponse( $req_password );
         }
 
-        return AuthenticationResponse::newPass();
+        return $this->beginPrimaryAuthentication( $reqs );
     }
 
 
-    public function postAuthentication(
-        $user, AuthenticationResponse $response) {
-        $this->logger->info( "MARKER postauthentication" );
-    }
-
-
-    // Come here with two requests: 1: PasswordAuthenticationRequest
-    // and 2: RememberMeAuthenticationRequest.
+    // Handle authentication, returning PASS if the given credentials
+    // are good, FAIL if they are bad, or ABSTAIN if they cannot be
+    // handled by this provider.
     public function beginPrimaryAuthentication ( array $reqs ) {
-        $this->logger->info(
-            "MARKER in beginPrimaryAuthentication(): " . count( $reqs ) .
-            " requests" );
-
-        $req = AuthenticationRequest::getRequestByClass(
+        $req_password = AuthenticationRequest::getRequestByClass(
             $reqs, PasswordAuthenticationRequest::class );
-        if ( $req && $req->username !== null && $req->password !== null ) {
-            $this->logger->info(
-                "MARKER in beginPrimaryAuthentication() with credentials" );
+        if ( $req_password &&
+             $req_password->username !== null &&
+             $req_password->password !== null ) {
 
-            if ( username_exists( $req->username ) ) {
-                // The user is know to WordPress, so try to sign on.
-                // Try to honor the setting of the "Remember me" box
-                // from the supplied requests.
-                $this->logger->info(
-                    "MARKER in beginPrimaryAuthentication() in WordPress" );
-
+            if ( username_exists( $req_password->username ) ) {
+                // The user is known to WordPress, so try to sign on.
+                // Honor the "Remember me" setting from the supplied
+                // requests.
                 $creds = [
-                    'user_login' => $req->username,
-                    'user_password' => $req->password
+                    'user_login' => $req_password->username,
+                    'user_password' => $req_password->password
                 ];
 
-                $req_rem = AuthenticationRequest::getRequestByClass(
+                $req_rememberMe = AuthenticationRequest::getRequestByClass(
                     $reqs, RememberMeAuthenticationRequest::class );
-                $creds['remember'] = $req_rem && $req_rem->rememberMe;
-
-                $wp_user = wp_signon( $creds, true );
-                if ( $wp_user instanceof WP_User ) {
-                    $this->logger->info(
-                        "MARKER in beginPrimaryAuthentication() WordPress says yes" );
-                    return AuthenticationResponse::newPass( $req->username );
-
-                    // But this gives "The supplied credentials are
-                    // not associated with any user on this wiki" but
-                    // everything is fine after that?
-                    //
-                    // So for some reason wp_signon() does not do what
-                    // I want?!
-                    //
-                    // See
-                    // https://developer.wordpress.org/reference/functions/wp_signon/
-                    wp_set_current_user( $wp_user->ID );
-
-                    $wp_user_check = wp_get_current_user();
-                    $this->logger->info(
-                        "MARKER now have " . $wp_user_check->user_login .
-                        " expected ID " . $wp_user->ID );
-
-                    return AuthenticationResponse::newPass( $req->username );
-#                    return AuthenticationResponse::newPass();
+                if ( $req_rememberMe ) {
+                    $creds[ 'remember' ] = $req_rememberMe->rememberMe;
                 }
 
-                $this->logger->info(
-                    "MARKER in beginPrimaryAuthentication() WordPress says no" );
-                return $this->failResponse( $req );
+                if ( is_wp_error( wp_signon( $creds, true ) ) ) {
+                    return $this->failResponse( $req_password );
+                }
+                return AuthenticationResponse::newPass(
+                    $req_password->username );
+
             } else {
-                // From AuthManager's autoCreateUser() documentation:
-                // "PrimaryAuthenticationProviders can invoke
-                // [auto-creation] by returning a PASS from
-                // beginPrimaryAuthentication/continuePrimaryAuthentication
-                // with the username of a non-existing user."
-                $this->logger->info(
-                    "MARKER in beginPrimaryAuthentication() no WordPress: create" );
-                return AuthenticationResponse::newPass( $req->username );
+                $userInfo = UserInfo::newFromName( $req_password->username );
+                if ( $userInfo->getId() !== 0) {
+                    // User exists in MediaWiki, but not in WordPress:
+                    // let downstream provider handle authentication.
+                    return AuthenticationResponse::newAbstain();
+                }
             }
         }
 
-        // Let somebody else do the authentication.
-        return AuthenticationResponse::newAbstain();
-    }
-
-
-/*
-    // Not needed, identical to parent's implementation.
-    public function getAuthenticationRequests( $action, array $options ) {
-        $this->logger->info("MARKER getAuthenticationRequests(): " . $action );
-
-        switch ( $action ) {
-        case AuthManager::ACTION_CHANGE:
-        case AuthManager::ACTION_CREATE:
-        case AuthManager::ACTION_LOGIN:
-        case AuthManager::ACTION_REMOVE:
-            return [ new PasswordAuthenticationRequest ];
-
-        default:
-            break;
-        }
-
-        return [];
-    }
-*/
-
-
-    public function onUserSetEmail( $user, &$email ) {
-        $wp_user = get_user_by( 'login', $user->getName() );
-        if ( $wp_user ) {
-            wp_update_user( [
-                'ID' => $wp_user->ID,
-                'user_email' => $email
-            ] );
-        }
+        // No password (the user must supply a username): invoke
+        // auto-creation.
+        return AuthenticationResponse::newPass(
+            $req_password->username );
     }
 
 
@@ -207,34 +138,25 @@ class WPMWAuthenticationProvider extends
     public function providerAllowsAuthenticationDataChange(
         AuthenticationRequest $req, $checkData = true ) {
 
-        $this->logger->info(
-            "MARKER in providerAllowsAuthenticationDataChange() request type " .
-            get_class( $req ) . " checkData " . $checkData );
-
+        if ( $req->action === AuthManager::ACTION_REMOVE ) {
+            // The corresponding credentials should no longer result
+            // in a successful login, but that cannot be implemented
+            // here because there does not appear to be reliable way
+            // to disable an account in WordPress.
+            return \StatusValue::newGood( 'ignored' );
+        }
         return \StatusValue::newGood();
     }
 
 
-    // Cannot change 'realname' to some arbitrary string, because that
-    // would not map back to WordPress's 'display_name' cleanly.  In
-    // WordPress, the display name is selected from a drop-down list.
     public function providerAllowsPropertyChange( $property ) {
-        $this->logger->info(
-            "MARKER providerAllowsPropertyChange(): " . $property );
-
-        if ( $property === 'emailaddress' ) {
-            return true;
-        }
         return false;
     }
 
 
+    // Set a new password for the given user.
     public function providerChangeAuthenticationData(
         AuthenticationRequest $req ) {
-
-        $this->logger->info(
-            "MARKER in providerChangeAuthenticationData() with a " .
-            get_class( $req ) );
 
         $wp_user = get_user_by( 'login', $req->username );
         if ( $wp_user ) {
@@ -245,51 +167,35 @@ class WPMWAuthenticationProvider extends
                     'ID' => $wp_user->ID,
                     'user_pass' => $req->password
                 ] );
-
-            } else if ( $req->action === AuthManager::ACTION_REMOVE ) {
-                // The corresponding credentials should no longer
-                // result in a successful login.  XXX Lock the
-                // account!  Could then do the same thing in the
-                // implementation of providerRevokeAccessForUser();
-                // currently no (standard) way to accomplish this
-                // (several plugins exist)
             }
         }
     }
 
 
-    // This must be implemented (no implementation in the abstract
-    // class).
+    // See if the given user exists - true if so, false if not.
     public function testUserExists( $username, $flags = User::READ_NORMAL ) {
-        $this->logger->info( "MARKER in testUserExists()" );
-        return username_exists( $username ) ? true : false;
+        return username_exists( $username );
     }
 
 
-    // Auto-creation requires the user to exist in WordPress.  This is
-    // actually called.  Does this imply create the user in WordPress?
-    // Note somewhere that users do not necessarily have the same ID
-    // in WordPress as in MediaWiki.
     public function testUserForCreation(
         $user, $autocreate, array $options = [] ) {
 
-        $this->logger->info( "MARKER testUserForCreation()" );
-
         if ( $autocreate ) {
+            // MediaWiki auto-creation requires the user to exist in
+            // WordPress.
             $wp_user = get_user_by( 'login', $user->getName() );
-            if ( $wp_user ) {
-                $user->setEmail( $wp_user->user_email );
-                $user->setRealName( $wp_user->display_name );
-                return \StatusValue::newGood();
+            if ( !$wp_user ) {
+                return \StatusValue::newFatal(
+                    "No corresponding WordPress user: cannot auto-create" );
             }
 
-            // This is an internationalized string, defined in a
-            // library somewhere?  XXX Fix it!
-            return \StatusValue::newFatal( 'user-does-not-exist-in-WordPress' );
+            $user->setEmail( $wp_user->user_email );
+            $user->setRealName( $wp_user->display_name );
+            return \StatusValue::newGood();
         }
 
-        // testUserExists() will already prevent creating users that
-        // exist in WordPress.
+        // If testUserExists() succeeds this should not be called.
         return \StatusValue::newGood();
     }
 }
