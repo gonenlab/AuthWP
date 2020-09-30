@@ -68,9 +68,8 @@ class WPMWAuthenticationProvider extends
             return $this->failResponse( $req_password );
         }
 
-        $notify = Sanitizer::validateEmail( $req_userData->email )
-                ? 'both'
-                : 'admin';
+        $notify = MediaWikiServices::Sanitizer::validateEmail(
+            $req_userData->email ) ? 'both' : 'admin';
         wp_send_new_user_notifications( $user_id, $notify );
 
         return $this->beginPrimaryAuthentication( $reqs );
@@ -108,14 +107,11 @@ class WPMWAuthenticationProvider extends
                 return AuthenticationResponse::newPass(
                     $req_password->username );
 
-            } else {
-                $userInfo = UserInfo::newFromName( $req_password->username );
-                if ( $userInfo->getId() !== 0) {
-                    // The user exists in MediaWiki, but not in
-                    // WordPress: let a downstream provider handle
-                    // authentication.
-                    return AuthenticationResponse::newAbstain();
-                }
+            } elseif ( UserInfo::newFromName( $req_password->username )
+                       ->getId() !== 0) {
+                // The user exists in MediaWiki, but not in WordPress:
+                // let a downstream provider handle authentication.
+                return AuthenticationResponse::newAbstain();
             }
         }
 
@@ -183,7 +179,6 @@ class WPMWAuthenticationProvider extends
 
             $user->setEmail( $wp_user->user_email );
             $user->setRealName( $wp_user->display_name );
-            return \StatusValue::newGood();
         }
 
         return \StatusValue::newGood();

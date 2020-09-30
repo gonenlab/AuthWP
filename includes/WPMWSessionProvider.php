@@ -73,7 +73,7 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
         // downstream session provider will have to provide the
         // session information instead.
         $wp_user = wp_get_current_user();
-        if ( !$wp_user->exists() ) {
+        if ( !$wp_user || !$wp_user->exists() ) {
             return null;
         }
         $wp_user_login =  User::getCanonicalName(
@@ -88,8 +88,8 @@ class WPMWSessionProvider extends ImmutableSessionProviderWithCookie {
         // populate the "Username" field on MediaWiki's "Log in" page.
         $userID = $request->getCookie( 'UserID' );
         if ( $userID !== null ) {
-            $userInfo = UserInfo::newFromId( $userID );
-            if ( $userInfo && $userInfo->getName() === $wp_user_login ) {
+            if ( UserInfo::newFromId( $userID )
+                 ->getName() === $wp_user_login ) {
                 $request->response()->clearCookie( 'UserID' );
             }
         }
