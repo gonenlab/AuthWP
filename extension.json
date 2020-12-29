@@ -20,7 +20,7 @@
         "WPMW": "GlobalVarConfig::newInstance"
     },
     "config": {
-        "WPMWRelPath":  "..",
+        "WPMWPath":  "..",
         "WPMWPriority": "100"
     },
     "Hooks": {
