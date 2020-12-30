@@ -1,42 +1,39 @@
 {
-    "name": "WPMW",
-    "version": "0.4.0",
-    "author": [
-        "Ciaran Gultnieks",
-        "Johan Hattne"
-    ],
+    "name": "AuthWP",
+    "version": "0.0.0",
+    "author": [ "Johan Hattne" ],
     "description": "Provides WordPress login integration",
-    "license-name": "AGPL-3.0-or-later",
+    "license-name": "MIT",
     "type": "other",
-    "url": "https://www.mediawiki.org/wiki/Extension:WPMW",
+    "url": "https://www.mediawiki.org/wiki/Extension:AuthWP",
     "requires": {
         "MediaWiki": ">= 1.27"
     },
     "AutoloadClasses": {
-        "WPMWAuthenticationProvider": "includes/WPMWAuthenticationProvider.php",
-        "WPMWSessionProvider": "includes/WPMWSessionProvider.php"
+        "AuthWPAuthenticationProvider": "includes/AuthWPAuthenticationProvider.php",
+        "AuthWPSessionProvider": "includes/AuthWPSessionProvider.php"
     },
     "ConfigRegistry": {
-        "WPMW": "GlobalVarConfig::newInstance"
+        "AuthWP": "GlobalVarConfig::newInstance"
     },
     "config": {
-        "WPMWPath":  "..",
-        "WPMWPriority": "100"
+        "AuthWPPath":  "..",
+        "AuthWPPriority": "100"
     },
     "Hooks": {
-        "UserLogout": [ "WPMWSessionProvider::onUserLogout" ]
+        "UserLogout": [ "AuthWPSessionProvider::onUserLogout" ]
     },
     "AuthManagerAutoConfig": {
         "primaryauth": {
-            "WPMWAuthenticationProvider": {
-                "class": "WPMWAuthenticationProvider",
+            "AuthWPAuthenticationProvider": {
+                "class": "AuthWPAuthenticationProvider",
                 "args": []
             }
         }
     },
     "SessionProviders": {
-        "WPMWSessionProvider": {
-            "class": "WPMWSessionProvider",
+        "AuthWPSessionProvider": {
+            "class": "AuthWPSessionProvider",
             "args": []
         }
     },

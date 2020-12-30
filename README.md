@@ -1,8 +1,8 @@
 <!-- -*- mode: gfm -*- -->
 
-WPMW is a [MediaWiki](https://www.mediawiki.org) extension that allows
-authentication with [WordPress](https://wordpress.org) credentials.
-It is a rewrite
+AuthWP is a [MediaWiki](https://www.mediawiki.org) extension that
+allows authentication with [WordPress](https://wordpress.org)
+credentials.  It is a rewrite
 of [WPMW](https://www.mediawiki.org/w/index.php?oldid=3746476) by
 Ciaran Gultnieks and is intended to provide essentially the same
 functionality using `SessionManager` and `AuthenticationProvider`
@@ -30,5 +30,5 @@ introduced in MediaWiki 1.27.  In particular:
   WordPress assumes email addresses are unique user identifiers.
 
 See
-[the MediaWiki Extension page](https://www.mediawiki.org/w/index.php?oldid=3746476) for
+[the MediaWiki Extension page](https://www.mediawiki.org/wiki/Extension:AuthWP) for
 further documentation.
