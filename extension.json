@@ -2,26 +2,16 @@
     "name": "AuthWP",
     "version": "0.0.0",
     "author": [ "Johan Hattne" ],
-    "description": "Provides WordPress login integration",
+    "descriptionmsg": "authwp-desc",
     "license-name": "MIT",
     "type": "other",
     "url": "https://www.mediawiki.org/wiki/Extension:AuthWP",
     "requires": {
         "MediaWiki": ">= 1.27"
     },
-    "AutoloadClasses": {
-        "AuthWPAuthenticationProvider": "includes/AuthWPAuthenticationProvider.php",
-        "AuthWPSessionProvider": "includes/AuthWPSessionProvider.php"
-    },
-    "ConfigRegistry": {
-        "AuthWP": "GlobalVarConfig::newInstance"
-    },
     "config": {
         "AuthWPPath":  "..",
         "AuthWPPriority": "100"
-    },
-    "Hooks": {
-        "UserLogout": [ "AuthWPSessionProvider::onUserLogout" ]
     },
     "AuthManagerAutoConfig": {
         "primaryauth": {
@@ -30,6 +20,19 @@
                 "args": []
             }
         }
+    },
+    "AutoloadClasses": {
+        "AuthWPAuthenticationProvider": "includes/AuthWPAuthenticationProvider.php",
+        "AuthWPSessionProvider": "includes/AuthWPSessionProvider.php"
+    },
+    "ConfigRegistry": {
+        "AuthWP": "GlobalVarConfig::newInstance"
+    },
+    "Hooks": {
+        "UserLogout": [ "AuthWPSessionProvider::onUserLogout" ]
+    },
+    "MessagesDirs": {
+        "AuthWP": [ "i18n" ]
     },
     "SessionProviders": {
         "AuthWPSessionProvider": {

@@ -29,6 +29,7 @@ introduced in MediaWiki 1.27.  In particular:
   empty email addresses.  This is a potential problem because
   WordPress assumes email addresses are unique user identifiers.
 
-See
-[the MediaWiki Extension page](https://www.mediawiki.org/wiki/Extension:AuthWP) for
+See the
+MediaWiki
+[Extension page](https://www.mediawiki.org/wiki/Extension:AuthWP) for
 further documentation.

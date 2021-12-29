@@ -50,7 +50,7 @@ class AuthWPSessionProvider extends ImmutableSessionProviderWithCookie {
         if ( $this->priority < SessionInfo::MIN_PRIORITY ||
              $this->priority > SessionInfo::MAX_PRIORITY ) {
             throw new \InvalidArgumentException(
-                __METHOD__ . ": Invalid priority" );
+                __METHOD__ . ': ' . wfMessage( 'authwp-invalid-priority' ) );
         }
     }
 

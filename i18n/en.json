@@ -1,0 +1,5 @@
+{
+    "authwp-desc": "Provides WordPress login integration",
+    "authwp-invalid-priority": "Invalid priority",
+    "authwp-no-wordpress-user": "No corresponding WordPress user: cannot auto-create"
+}

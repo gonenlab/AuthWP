@@ -180,7 +180,7 @@ class AuthWPAuthenticationProvider extends
             $wp_user = get_user_by( 'login', $user->getName() );
             if ( !$wp_user ) {
                 return \StatusValue::newFatal(
-                    "No corresponding WordPress user: cannot auto-create" );
+                    wfMessage( 'authwp-no-wordpress-user' ) );
             }
 
             $user->setEmail( $wp_user->user_email );
