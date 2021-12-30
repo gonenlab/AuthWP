@@ -1,6 +1,6 @@
 {
     "name": "AuthWP",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "author": [ "Johan Hattne" ],
     "descriptionmsg": "authwp-desc",
     "license-name": "MIT",
