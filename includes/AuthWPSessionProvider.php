@@ -27,6 +27,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\ImmutableSessionProviderWithCookie;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\UserInfo;
+use MediaWiki\User\UserRigorOptions;
 
 
 // Bootstrap WordPress using the relative path to its installation
@@ -82,8 +83,8 @@ class AuthWPSessionProvider extends ImmutableSessionProviderWithCookie {
         if ( !$wp_user || !$wp_user->exists() ) {
             return null;
         }
-        $wp_user_login =  User::getCanonicalName(
-            $wp_user->user_login, 'usable' );
+        $wp_user_login = $this->userNameUtils->getCanonical(
+            $wp_user->user_login, UserRigorOptions::RIGOR_USABLE );
 
 
         // Clear the UserID cookie if the corresponding username

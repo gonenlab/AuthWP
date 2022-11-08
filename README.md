@@ -3,10 +3,10 @@
 AuthWP is a [MediaWiki](https://www.mediawiki.org) extension that
 allows authentication with [WordPress](https://wordpress.org)
 credentials.  It is a rewrite
-of [WPMW](https://www.mediawiki.org/w/index.php?oldid=3746476) by
-Ciaran Gultnieks and is intended to provide essentially the same
-functionality using `SessionManager` and `AuthenticationProvider`
-introduced in MediaWiki 1.27.  In particular:
+of [WPMW](https://www.mediawiki.org/w/index.php?oldid=3746476)
+by [Ciaran Gultnieks](https://github.com/CiaranG) and is intended to
+provide essentially the same functionality using `SessionManager` and
+`AuthenticationProvider` introduced in MediaWiki 1.27.  In particular:
 * A valid WordPress session allows access to MediaWiki.
   Authenticating to MediaWiki with WordPress credentials signs the
   user in to WordPress.

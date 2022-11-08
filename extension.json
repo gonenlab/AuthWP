@@ -1,13 +1,13 @@
 {
     "name": "AuthWP",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "author": [ "Johan Hattne" ],
     "descriptionmsg": "authwp-desc",
     "license-name": "MIT",
     "type": "other",
     "url": "https://www.mediawiki.org/wiki/Extension:AuthWP",
     "requires": {
-        "MediaWiki": ">= 1.27"
+        "MediaWiki": ">= 1.35"
     },
     "config": {
         "AuthWPPath":  "..",
